@@ -1,28 +1,35 @@
-/* You By What You Eat – Start, Aktionen, Benachrichtigungen */
-import { DISHES, ING, STORES } from './data.js';
+/* You By What You Eat – Start, Aktionen, Timer, Benachrichtigungen */
+import { DISHES, STORES } from './data.js';
 import { S, save, resetAll, exportJSON } from './store.js';
 import * as E from './engine.js';
+import * as SP from './sport.js';
 import * as V from './screens.js';
 import { ui } from './screens.js';
-import { $, $$, go, back, refresh, setRenderer, initRouter, current, toast, confetti, sheet, ico, esc } from './ui.js';
+import { $, $$, go, back, refresh, setRenderer, initRouter, current, toast, confetti, sheet, ico, esc, ring } from './ui.js';
 import { analyse, DEMO } from './receipt.js';
-import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar } from './native.js';
+import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues } from './native.js';
 
 let notifPerm = 'unknown';
+if (!S.profile.runStart) { S.profile.runStart = E.todayKey(); save(); }
 
 /* ---------- Routen ---------- */
 setRenderer(route => {
   const [path, qs] = route.replace(/^#\//, '').split('?');
   const q = Object.fromEntries(new URLSearchParams(qs || ''));
-  const [base, arg] = path.split('/');
+  const [base, arg, arg2] = path.split('/');
   switch (base) {
     case 'heute': return V.heute();
-    case 'woche': return V.woche();
-    case 'bon': return V.bon();
+    case 'plan': case 'woche': return V.plan();
+    case 'rezepte': return V.rezepte();
+    case 'training': return V.training();
     case 'einkauf': return V.einkauf();
+    case 'bon': return V.bon();
     case 'ich': return V.ich();
     case 'dish': return V.dish(arg, q);
     case 'info': return V.info(arg);
+    case 'run': return V.runDetail(arg);
+    case 'workout': return V.workoutDetail(arg, q);
+    case 'timer': prepareTimer(arg, arg2, q); return V.timerScreen();
     case 'review': return V.review();
     case 'receipt': return V.receipt(arg);
     case 'store': return V.store(arg);
@@ -31,7 +38,6 @@ setRenderer(route => {
     case 'profile': return V.profile();
     case 'notif': return V.notif(notifPerm);
     case 'ratings': return V.ratings();
-    case 'rezepte': return V.rezepte(ui.rz);
     case 'trinken': return V.trinken();
     case 'weight': return V.weight();
     case 'onboarding': return V.onboarding();
@@ -45,11 +51,10 @@ function applyTheme() {
   if (t === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   const dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   statusBar(dark);
-  const m = $('meta[name=theme-color]'); if (m) m.content = dark ? '#0B1410' : '#F2F6F3';
+  const m = $('meta[name=theme-color]'); if (m) m.content = dark ? '#0A0E13' : '#F3F5F7';
 }
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
-/* ---------- Log-Helfer ---------- */
 const logOf = k => (S.log[k] = S.log[k] || { eaten: {} });
 
 /* ---------- Bewerten ---------- */
@@ -61,17 +66,11 @@ function doRate(id, k, slot, v, el) {
   if (res.newlyBlocked) {
     haptic.warn();
     const from = E.replaceBlocked();
-    let repl = '';
-    if (from && S.plan[from]) repl = ' Ersetzt durch <b>' + esc(DISHES[S.plan[from].a].name) + '</b>.';
+    const repl = from && S.plan[from] ? ' Ersetzt durch <b>' + esc(DISHES[S.plan[from].a].name) + '</b>.' : '';
     toast('🚫 <b>' + esc(DISHES[id].name) + '</b> fliegt raus – öfter unter 3 Sterne.' + repl, 'toast-warn');
     scheduleAll();
-  } else if (res.low) {
-    haptic.tap();
-    toast('Notiert. Noch einmal unter 3 ★ und es kommt automatisch was anderes.');
-  } else {
-    haptic.ok();
-    if (v >= 4) toast(v === 5 ? 'Top! Kommt öfter dran 🎉' : 'Merk ich mir – kommt öfter dran 👍');
-  }
+  } else if (res.low) { haptic.tap(); toast('Notiert. Noch einmal unter 3 ★ und es kommt automatisch was anderes.'); }
+  else { haptic.ok(); if (v >= 4) toast(v === 5 ? 'Top! Kommt öfter dran 🎉' : 'Merk ich mir – kommt öfter dran 👍'); }
 }
 function setStarsUI(row, v) {
   $$('.star', row).forEach((s, i) => {
@@ -80,37 +79,26 @@ function setStarsUI(row, v) {
     if (on) { s.classList.remove('pop'); void s.offsetWidth; s.style.animationDelay = (i * 45) + 'ms'; s.classList.add('pop'); }
   });
 }
-export function openRate(k) {
+function openRate(k) {
   if (!S.plan[k]) return;
   haptic.tap();
-  sheet(V.rateSheetHTML(k), (el, close) => {
+  sheet(V.rateSheetHTML(k), el => {
     el.addEventListener('click', e => {
       const st = e.target.closest('[data-act="star"]');
-      if (st) {
-        const row = st.closest('.stars-row'), v = +st.dataset.v;
-        setStarsUI(row, v);
-        doRate(row.dataset.id, row.dataset.k, row.dataset.slot, v, st);
-        const ri = row.closest('.rate-item'); if (ri) $('.eat', ri).classList.add('on');
-        return;
-      }
+      if (st) { const row = st.closest('.stars-row'), v = +st.dataset.v; setStarsUI(row, v); doRate(row.dataset.id, row.dataset.k, row.dataset.slot, v, st); const ri = row.closest('.rate-item'); if (ri) $('.ml-add', ri).classList.add('on'); return; }
       const eat = e.target.closest('[data-act="eat"]');
       if (eat) { toggleEat(eat.dataset.k, eat.dataset.slot); eat.classList.toggle('on'); haptic.tap(); }
     });
-    el.addEventListener('change', e => {
-      const cb = e.target.closest('[data-act="cooked-cb"]');
-      if (cb) { logOf(cb.dataset.k).cooked = cb.checked; save(); haptic.tap(); }
-    });
+    el.addEventListener('change', e => { const cb = e.target.closest('[data-act="cooked-cb"]'); if (cb) { logOf(cb.dataset.k).cooked = cb.checked; save(); haptic.tap(); } });
   });
-  const obs = new MutationObserver(() => { if (!$('.sheet-wrap')) { obs.disconnect(); refresh(); } });
-  obs.observe(document.body, { childList: true });
+  watchSheetClose();
 }
-function toggleEat(k, slot) {
-  const L = logOf(k); L.eaten = L.eaten || {};
-  L.eaten[slot] = !L.eaten[slot]; save();
-}
+function watchSheetClose() { const obs = new MutationObserver(() => { if (!$('.sheet-wrap')) { obs.disconnect(); refresh(); } }); obs.observe(document.body, { childList: true }); }
+function toggleEat(k, slot) { const L = logOf(k); L.eaten = L.eaten || {}; L.eaten[slot] = !L.eaten[slot]; save(); }
 
 /* ---------- Kassenbon ---------- */
 async function startScan(src) {
+  if (!isNative) { go('#/bon'); return; }
   let photo;
   try { photo = await takeReceiptPhoto(src); }
   catch (e) { if (!/cancel/i.test(String(e && e.message || e))) toast('Kamera: ' + esc(e.message || e), 'toast-warn'); return; }
@@ -118,23 +106,16 @@ async function startScan(src) {
   go('#/review');
   const t0 = Date.now();
   try {
-    const res = await ocr(photo.path);
-    const a = analyse(res);
-    await new Promise(r => setTimeout(r, Math.max(0, 1300 - (Date.now() - t0))));   // Scan-Animation kurz zeigen
+    const a = analyse(await ocr(photo.path));
+    await new Promise(r => setTimeout(r, Math.max(0, 1300 - (Date.now() - t0))));
     if (!a.items.length) { ui.review = { state: 'error', error: 'Auf dem Foto wurden keine Artikel mit Preis gefunden. Bon flach hinlegen, gutes Licht, ganz ins Bild – und nochmal.' }; refresh(false); return; }
-    ui.review = { state: 'done', img: photo.webPath, ...a };
-    haptic.ok();
-    refresh(false);
-  } catch (e) {
-    ui.review = { state: 'error', error: String(e && e.message || e) };
-    refresh(false);
-  }
+    ui.review = { state: 'done', img: photo.webPath, ...a }; haptic.ok(); refresh(false);
+  } catch (e) { ui.review = { state: 'error', error: String(e && e.message || e) }; refresh(false); }
 }
 function scanText(txt) {
   const a = analyse(txt.split(/\n/));
   if (!a.items.length) { toast('Keine Artikel mit Preis gefunden.', 'toast-warn'); return; }
-  ui.review = { state: 'done', img: null, ...a };
-  go('#/review');
+  ui.review = { state: 'done', img: null, ...a }; go('#/review');
 }
 function readReviewInputs() {
   const R = ui.review; if (!R || R.state !== 'done') return;
@@ -154,69 +135,213 @@ function saveReview() {
   if (!items.length) { toast('Keine Artikel zum Speichern.', 'toast-warn'); return; }
   const before = new Set(Object.entries(E.learned().info).flatMap(([ing, per]) => Object.keys(per).map(s => ing + '|' + s)));
   const r = { id: Date.now().toString(36), store: R.store || 'sonst', date: R.date || E.todayKey(), total: R.total, items };
-  S.receipts.push(r);
-  E.invalidatePrices(); save(true);
-  const after = E.learned();
-  const learnedN = items.filter(i => i.ing).length;
-  const fresh = Object.entries(after.info).flatMap(([ing, per]) => Object.keys(per).map(s => ing + '|' + s)).filter(x => !before.has(x)).length;
-  const promosN = items.filter(i => i.promo).length;
-  ui.review = null;
-  haptic.ok();
-  const c = $('#screens'); const rr = c.getBoundingClientRect(); confetti(rr.width / 2, rr.height / 2, 40);
+  S.receipts.push(r); E.invalidatePrices(); save(true);
+  const fresh = Object.entries(E.learned().info).flatMap(([ing, per]) => Object.keys(per).map(s => ing + '|' + s)).filter(x => !before.has(x)).length;
+  const learnedN = items.filter(i => i.ing).length, promosN = items.filter(i => i.promo).length;
+  ui.review = null; haptic.ok();
+  confetti(window.innerWidth / 2, window.innerHeight / 2, 40);
   go('#/bon');
   setTimeout(() => sheet(`<div class="learn-sum"><span class="ls-emo">🧾✨</span><h2 class="sh-t">Gelernt!</h2>
     <div class="ls-tiles"><div><b>${learnedN}</b><small>Preise</small></div><div><b>${fresh}</b><small>neu</small></div><div><b>${promosN}</b><small>Aktionen</small></div></div>
     <p class="sh-sub">${STORES[r.store].name} ist jetzt bekannter. Kosten, Einkaufsliste und Plan nutzen ab sofort diese Preise${promosN ? ' – und Gerichte mit Aktions-Zutaten kommen eher dran' : ''}.</p>
     <button class="btn wide tap" data-close>Super</button></div>`), 450);
-  // Plan der nächsten Tage darf jetzt Aktionen berücksichtigen (nur ab morgen, nichts schon Gekochtes)
   if (promosN) { E.replanFrom(E.addDays(E.todayKey(), 1)); scheduleAll(); }
 }
 
-/* ---------- Benachrichtigungen planen ---------- */
+/* =========================================================
+   TIMER für Lauf & Workout
+   ========================================================= */
+let tick = null, audio = null;
+document.addEventListener('pointerdown', () => { try { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) { /* kein Ton */ } }, { passive: true });
+function beep(freq = 880, ms = 160, n = 1) {
+  if (!audio) return;
+  for (let i = 0; i < n; i++) {
+    const o = audio.createOscillator(), g = audio.createGain(), t0 = audio.currentTime + i * (ms / 1000 + 0.08);
+    o.frequency.value = freq; o.type = 'sine'; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+    o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + ms / 1000 + 0.02);
+  }
+}
+const mmss = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+function prepareTimer(kind, id, q) {
+  const ref = kind === 'run' ? 'run|' + id : 'wo|' + id + '|' + (q.d || '');
+  if (ui.timer && ui.timer.ref === ref) return;
+  stopTick();
+  let seq, title, emoji, hue, date;
+  if (kind === 'run') {
+    const r = SP.runSession(id);
+    seq = [{ k: 'prep', sec: 10, z: 1, label: 'Gleich geht’s los' }, ...r.blocks];
+    title = r.name; emoji = '🏃'; hue = 25; date = id;
+  } else {
+    const w = SP.WORKOUTS[id]; if (!w) return;
+    seq = SP.workoutSeq(id); title = w.name; emoji = w.emoji; hue = w.hue; date = q.d || E.todayKey();
+  }
+  ui.timer = { ref, kind, id, date, seq, title, emoji, hue, idx: 0, end: Date.now() + seq[0].sec * 1000, paused: false, left: 0, started: Date.now(), done: false };
+}
+function blockInfo(b, T) {
+  if (T.kind === 'run') {
+    const z = SP.ZONES[b.z] || SP.ZONES[1];
+    const phase = { prep: 'Bereit machen', warm: 'Aufwärmen', walk: 'Gehen', run: 'Laufen', fast: 'Zügig!', cool: 'Auslaufen' }[b.k];
+    return { emoji: { prep: '⏳', warm: '🚶', walk: '🚶', run: '🏃', fast: '⚡', cool: '🧘' }[b.k], label: b.label, phase, how: [z.name + ': ' + z.txt], color: z.c };
+  }
+  const x = SP.EX[b.ex];
+  if (b.k === 'work') return { emoji: x.emoji, label: x.name, phase: 'Runde ' + b.round + ' · los!', how: x.how, color: '#22C55E' };
+  return { emoji: b.k === 'prep' ? '⏳' : '😮‍💨', label: b.k === 'prep' ? 'Gleich: ' + x.name : 'Pause', phase: b.k === 'prep' ? 'Bereit machen' : 'Durchatmen', how: ['Als Nächstes: ' + x.name, ...x.how.slice(0, 1)], color: '#64748B' };
+}
+function renderTimer(full) {
+  const T = ui.timer; if (!T || !$('.timer')) return;
+  const b = T.seq[T.idx]; if (!b) return;
+  const now = Date.now(), left = T.paused ? T.left : Math.max(0, T.end - now) / 1000;
+  const totalSec = T.seq.reduce((s, x) => s + x.sec, 0);
+  const doneSec = T.seq.slice(0, T.idx).reduce((s, x) => s + x.sec, 0) + (b.sec - left);
+  $('#tm-sec').textContent = mmss(left);
+  $('#tm-total').textContent = mmss(doneSec) + ' / ' + mmss(totalSec);
+  $('#tm-prog').style.width = (doneSec / totalSec * 100).toFixed(2) + '%';
+  const fg = $('.tm-r .ring-fg'); if (fg) { const len = parseFloat(fg.getAttribute('stroke-dasharray')); fg.style.strokeDashoffset = len * (1 - left / b.sec); }
+  if (full) {
+    const bi = blockInfo(b, T);
+    $('#tm-step').textContent = (T.idx + 1) + ' / ' + T.seq.length;
+    $('#tm-e').textContent = bi.emoji;
+    $('#tm-phase').textContent = T.paused ? 'Pausiert' : bi.phase;
+    $('#tm-label').textContent = bi.label;
+    $('#tm-how').innerHTML = bi.how.map(h => '<li>' + esc(h) + '</li>').join('');
+    $('.timer').style.setProperty('--zc', bi.color);
+    $('.timer').classList.toggle('is-rest', b.k === 'rest' || b.k === 'walk' || b.k === 'prep');
+    const nb = T.seq[T.idx + 1];
+    $('#tm-next').innerHTML = nb ? '<small>Als Nächstes</small><b>' + esc(blockInfo(nb, T).label) + '</b><span>' + mmss(nb.sec) + '</span>' : '<small>Danach</small><b>Geschafft! 🎉</b>';
+    $('#tm-pp').innerHTML = ico(T.paused ? 'play' : 'pause');
+    const c = $('.tm-c'); if (c) c.animate([{ transform: 'scale(.9)', opacity: .4 }, { transform: 'scale(1)', opacity: 1 }], { duration: 380, easing: 'cubic-bezier(.34,1.56,.64,1)' });
+  }
+}
+function step() {
+  const T = ui.timer; if (!T || T.paused || T.done) return;
+  const now = Date.now();
+  let changed = false;
+  while (now >= T.end && T.idx < T.seq.length) {
+    T.idx++; changed = true;
+    if (T.idx >= T.seq.length) break;
+    T.end += T.seq[T.idx].sec * 1000;
+  }
+  if (T.idx >= T.seq.length) { finishTimer(); return; }
+  const left = (T.end - now) / 1000;
+  if (!changed && left <= 3.05 && left > 0 && Math.ceil(left) !== T.lastCount) { T.lastCount = Math.ceil(left); beep(660, 90); }
+  if (changed) { T.lastCount = null; const b = T.seq[T.idx]; beep(b.k === 'work' || b.k === 'run' || b.k === 'fast' ? 990 : 520, 220, 2); haptic.med(); if (navigator.vibrate) navigator.vibrate([120, 80, 120]); }
+  renderTimer(changed);
+}
+function startTick() { stopTick(); tick = setInterval(step, 200); }
+function stopTick() { if (tick) clearInterval(tick); tick = null; }
+function runCues() {
+  const T = ui.timer; if (!T || T.kind !== 'run' || T.paused) { cancelRunCues(); return; }
+  const cues = []; let at = T.end;
+  for (let i = T.idx + 1; i < T.seq.length; i++) {
+    const b = T.seq[i], bi = blockInfo(b, T);
+    cues.push({ at, title: bi.emoji + ' Jetzt: ' + b.label, body: mmss(b.sec) + ' · ' + bi.how[0] });
+    at += b.sec * 1000;
+  }
+  cues.push({ at, title: '🎉 Lauf geschafft!', body: 'Öffne die App und speichere deinen Lauf.' });
+  scheduleRunCues(cues);
+}
+window.addEventListener('timer-mount', () => { if (ui.timer && !ui.timer.done) { renderTimer(true); startTick(); runCues(); } });
+function finishTimer() {
+  const T = ui.timer; if (!T) return;
+  T.done = true; stopTick(); cancelRunCues();
+  beep(1200, 160, 3); haptic.ok();
+  confetti(window.innerWidth / 2, window.innerHeight / 3, 50);
+  const min = Math.round(T.seq.reduce((s, b) => s + b.sec, 0) / 60);
+  if (T.kind === 'run') {
+    const r = SP.runSession(T.date);
+    sheet(`<div class="learn-sum"><span class="ls-emo">🏃🎉</span><h2 class="sh-t">Lauf geschafft!</h2><p class="sh-sub">${esc(r.name)} · ${min} Min. Wie weit warst du ungefähr?</p>
+      <div class="field-2"><label class="field"><span>Kilometer</span><input id="fin-km" type="text" inputmode="decimal" value="${E.lit(r.km)}"></label><label class="field"><span>Minuten</span><input id="fin-min" type="number" inputmode="numeric" value="${min}"></label></div>
+      <button class="btn wide tap" id="fin-save">${ico('check')}Speichern</button></div>`, (el, close) => {
+      $('#fin-save', el).addEventListener('click', () => {
+        const km = parseFloat(($('#fin-km', el).value || '0').replace(',', '.')) || 0, m = parseInt($('#fin-min', el).value, 10) || min;
+        SP.markRun(T.date, km, m, Math.round(r.kcal * m / r.min)); ui.timer = null; close(); scheduleAll(); go('#/training'); toast('Lauf gespeichert – ' + Math.round(r.kcal * m / r.min) + ' kcal verbrannt 🔥');
+      });
+    });
+  } else {
+    const kcal = SP.workoutKcal(T.id);
+    SP.markWorkout(T.date, T.id, kcal, min);
+    sheet(`<div class="learn-sum"><span class="ls-emo">💪🎉</span><h2 class="sh-t">Workout geschafft!</h2><div class="ls-tiles"><div><b>${min}</b><small>Minuten</small></div><div><b>${kcal}</b><small>kcal</small></div><div><b>${SP.streak()}</b><small>Serie 🔥</small></div></div><p class="sh-sub">Stark – auch ohne Laufen hast du heute was getan.</p><button class="btn wide tap" data-close>Fertig</button></div>`);
+    ui.timer = null; scheduleAll(); setTimeout(() => go('#/training'), 300);
+  }
+}
+function confirmStopTimer() {
+  const T = ui.timer; if (!T) { back(); return; }
+  const totalSec = T.seq.reduce((s, x) => s + x.sec, 0), doneSec = T.seq.slice(0, T.idx).reduce((s, x) => s + x.sec, 0);
+  const far = doneSec / totalSec >= 0.6;
+  const wasPaused = T.paused; if (!wasPaused) A['timer-toggle']();
+  sheet(`<h2 class="sh-t">Training beenden?</h2><p class="sh-sub">${far ? 'Du hast schon über die Hälfte – zählt als erledigt, wenn du willst.' : 'Dein Fortschritt geht verloren.'}</p>
+    <div class="sh-btns col"><button class="btn tap" id="st-go" data-close>Weitermachen</button>${far ? '<button class="btn ghost tap" id="st-save" data-close>Als erledigt speichern</button>' : ''}<button class="btn ghost tap" id="st-quit" data-close>Abbrechen</button></div>`, el => {
+    $('#st-go', el).addEventListener('click', () => { if (!wasPaused && ui.timer && ui.timer.paused) A['timer-toggle'](); });
+    $('#st-quit', el).addEventListener('click', () => { stopTick(); cancelRunCues(); ui.timer = null; back(); });
+    const sv = $('#st-save', el); if (sv) sv.addEventListener('click', () => { T.idx = T.seq.length; T.paused = false; finishTimer(); });
+  });
+}
+
+/* =========================================================
+   BENACHRICHTIGUNGEN planen
+   ========================================================= */
 const at = (k, hhmm) => { const [h, m] = hhmm.split(':').map(Number); const d = E.dateOf(k); d.setHours(h, m || 0, 0, 0); return d; };
 const dayIdx = k => E.daysBetween('2026-01-01', k);
 export async function scheduleAll() {
   if (!isNative) return;
   E.ensurePlan();
-  const N = S.notif, list = [], t = E.todayKey(), T = E.targets();
+  const N = S.notif, list = [], t = E.todayKey(), T = E.targets(), P = S.profile;
   for (let i = 0; i < 7; i++) {
     const k = E.addDays(t, i), p = S.plan[k]; if (!p) continue;
-    const base = (dayIdx(k) % 100000) * 10;
+    const base = (dayIdx(k) % 80000) * 10;
     const f = DISHES[p.f], a = DISHES[p.a];
-    if (N.f.on) list.push({ id: base + 1, at: at(k, N.f.t), title: 'Guten Morgen ☀️', body: 'Klein anfangen: ' + f.name + ' – nur ≈ ' + f.kcal + ' kcal. Ein paar Löffel reichen schon.', action: null, extra: { route: 'dish', id: p.f, date: k, slot: 'f' } });
+    if (N.f.on) list.push({ id: base + 1, at: at(k, N.f.t), title: 'Guten Morgen ☀️', body: 'Klein anfangen: ' + f.name + ' – nur ≈ ' + f.kcal + ' kcal. Ein paar Löffel reichen schon.', extra: { route: 'dish', id: p.f, date: k, slot: 'f' } });
     if (N.cook.on) list.push({ id: base + 2, at: at(k, N.cook.t), title: 'Zeit zum Kochen 🍳', body: 'Heute: ' + a.name + ' (≈ ' + a.min + ' Min). Hast du schon angefangen?', action: 'COOK', extra: { route: 'dish', id: p.a, date: k, slot: 'a' } });
     if (N.rate.on) list.push({ id: base + 3, at: at(k, N.rate.t), title: 'Schon gegessen? 🍽️', body: 'Wie war ' + a.name + '? Gib 0–5 Sterne – was öfter unter 3 bekommt, fliegt automatisch raus.', action: 'RATE', extra: { route: 'rate', date: k } });
-    if (N.water.on) (N.water.t || '10:00,15:30').split(',').slice(0, 3).forEach((tt, j) => list.push({ id: base + 5 + j, at: at(k, tt.trim()), title: 'Trinkpause 💧', body: 'Ein großes Glas Wasser. Heute-Ziel: ≈ ' + E.lit(T.water + (p.train ? 1 : 0)) + ' L.', channel: 'tips', extra: { route: 'heute' } }));
     if (N.shop.on && E.wd(k) === N.shop.day) list.push({ id: base + 4, at: at(k, N.shop.t), title: 'Einkaufstag 🛒', body: 'Deine Liste ist fertig. Danach den Kassenbon scannen – die App lernt die Preise deines Markts.', action: 'SHOP', channel: 'tips', extra: { route: 'einkauf' } });
+    if (N.water.on) (N.water.t || '10:00,15:30').split(',').slice(0, 2).forEach((tt, j) => list.push({ id: base + 5 + j, at: at(k, tt.trim()), title: 'Trinkpause 💧', body: 'Ein großes Glas Wasser. Heute-Ziel: ≈ ' + E.lit(T.water + (p.train || SP.isRunDay(k) ? 1 : 0)) + ' L.', channel: 'tips', extra: { route: 'heute' } }));
+    const act = SP.plannedActivity(k);
+    if (act && !act.done) {
+      const wid = act.kind === 'workout' ? act.id : SP.workoutFor(k), w = SP.WORKOUTS[wid];
+      if (N.run.on) {
+        if (act.kind === 'run') list.push({ id: base + 7, at: at(k, P.runTime), title: 'Zeit zum Laufen 🏃', body: act.session.name + ': ' + act.session.min + ' Min, ' + SP.ZONES[act.session.zone].txt.toLowerCase() + '. Keine Lust? Dann ' + w.name + ' (' + SP.workoutMinutes(wid) + ' Min) – ohne Ausrede 😉', action: 'RUN', channel: 'run', extra: { route: 'run', date: k } });
+        else list.push({ id: base + 7, at: at(k, P.runTime), title: 'Workout-Zeit 💪', body: w.name + ': ' + SP.workoutMinutes(wid) + ' Min, ohne Geräte. Der Timer sagt dir alles an.', action: 'WO', channel: 'run', extra: { route: 'workout', id: wid, date: k } });
+      }
+      if (N.runFollow.on) { const ft = at(k, P.runTime); ft.setHours(ft.getHours() + 2); if (ft.getHours() < 22) list.push({ id: base + 8, at: ft, title: act.kind === 'run' ? 'Noch nicht gelaufen? 🤔' : 'Workout noch offen 💪', body: 'Dann wenigstens ' + w.name + ': ' + SP.workoutMinutes(wid) + ' Min im Wohnzimmer. Die App zeigt dir jede Übung.', action: 'WO', channel: 'run', extra: { route: 'workout', id: wid, date: k } }); }
+    }
   }
   return reschedule(list);
 }
 function onNotifAction(actionId, extra) {
   const k = extra.date || E.todayKey();
-  if (actionId === 'eaten') { const L = logOf(k); L.eaten = { f: true, m: true, s: true, a: true }; save(); ui.day = k; go('#/heute'); setTimeout(() => openRate(k), 500); return; }
+  const later = fn => { go('#/heute'); setTimeout(fn, 350); };
+  if (actionId === 'eaten') { const L = logOf(k); L.eaten = { f: true, m: true, s: true, a: true }; save(); ui.day = k; later(() => openRate(k)); return; }
   if (actionId === 'cooked') { logOf(k).cooked = true; save(); ui.day = k; go('#/heute'); toast('Gekocht ✓ – Boxen innerhalb von 2 Stunden in den Kühlschrank!'); return; }
   if (actionId === 'list') { go('#/einkauf'); return; }
   if (actionId === 'scan') { go('#/bon'); return; }
-  if (actionId === 'rate' || extra.route === 'rate') { ui.day = k; go('#/heute'); setTimeout(() => openRate(k), 500); return; }
-  if (actionId === 'recipe' || extra.route === 'dish') { go('#/heute'); setTimeout(() => go('#/dish/' + extra.id + '?d=' + k + '&s=' + (extra.slot || 'a')), 300); return; }
+  if (actionId === 'run-go') { if (SP.actOf(k) && SP.actOf(k).type === 'workout' && !SP.actOf(k).done) SP.undoAct(k); go('#/training'); setTimeout(() => go('#/timer/run/' + k), 350); return; }
+  if (actionId === 'run-wo' || actionId === 'wo-go') { const wid = extra.id || SP.workoutFor(k); SP.chooseWorkout(k, wid); scheduleAll(); go('#/training'); setTimeout(() => go('#/timer/workout/' + wid + '?d=' + k), 350); return; }
+  if (actionId === 'rate' || extra.route === 'rate') { ui.day = k; later(() => openRate(k)); return; }
+  if (actionId === 'recipe' || extra.route === 'dish') { later(() => go('#/dish/' + extra.id + '?d=' + k + '&s=' + (extra.slot || 'a'))); return; }
+  if (extra.route === 'run') { go('#/training'); setTimeout(() => go('#/run/' + k), 350); return; }
+  if (extra.route === 'workout') { go('#/training'); setTimeout(() => go('#/workout/' + extra.id + '?d=' + k), 350); return; }
+  if (extra.route === 'timer') { if (ui.timer) go('#/timer/' + (ui.timer.kind === 'run' ? 'run/' + ui.timer.date : 'workout/' + ui.timer.id + '?d=' + ui.timer.date)); return; }
   if (extra.route) go('#/' + extra.route);
 }
 
-/* ---------- Aktionen ---------- */
+/* =========================================================
+   AKTIONEN
+   ========================================================= */
 const A = {
-  back() { haptic.tap(); back(); },
+  back() { haptic.tap(); if (current().startsWith('#/timer')) { confirmStopTimer(); return; } back(); },
   day(el) {
     haptic.tap(); ui.day = el.dataset.k;
-    if (el.dataset.tab) { go('#/heute'); return; }
-    const old = $('.screen:last-child .days .day.on'); refresh();
-    const n = $('.screen:last-child .days .day.on'); if (n) n.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-    $$('.screen:last-child .hero, .screen:last-child .cook').forEach(c => c.animate([{ opacity: .3, transform: 'translateY(8px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+    if (el.dataset.tab || !current().startsWith('#/heute')) { go('#/heute'); return; }
+    refresh();
+    $$('.screen:last-child .card').slice(0, 3).forEach((c, i) => c.animate([{ opacity: .3, transform: 'translateY(10px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: i * 40, easing: 'cubic-bezier(.2,.8,.2,1)' }));
   },
   amt(el) { haptic.tap(); ui.amt = el.dataset.v; refresh(); },
   eat(el) {
     toggleEat(el.dataset.k, el.dataset.slot); haptic.tap();
-    el.classList.toggle('on'); el.closest('.meal') && el.closest('.meal').classList.toggle('eaten');
-    setTimeout(refresh, 260);
+    const on = !el.classList.contains('on');
+    el.classList.toggle('on'); if (on) { el.innerHTML = ico('check'); const r = el.getBoundingClientRect(); confetti(r.left + r.width / 2, r.top + r.height / 2, 10); }
+    setTimeout(refresh, 280);
   },
   cooked(el) {
     const L = logOf(el.dataset.k); L.cooked = !L.cooked; save();
@@ -237,24 +362,16 @@ const A = {
   'rate-open'(el) { openRate(el.dataset.k); },
   'quick-rate'(el) {
     const k = el.dataset.k, v = +el.dataset.v, p = S.plan[k];
-    const row = el.parentElement;
-    $$('.star', row).forEach((s, i) => { s.classList.toggle('on', i < v); if (i < v) { s.classList.remove('pop'); void s.offsetWidth; s.style.animationDelay = (i * 45) + 'ms'; s.classList.add('pop'); } });
+    $$('.star', el.parentElement).forEach((s, i) => { s.classList.toggle('on', i < v); if (i < v) { s.classList.remove('pop'); void s.offsetWidth; s.style.animationDelay = (i * 45) + 'ms'; s.classList.add('pop'); } });
     doRate(p.a, k, 'a', v, el);
     setTimeout(() => openRate(k), 650);
   },
-  star(el) {
-    const row = el.closest('.stars-row'), v = +el.dataset.v;
-    setStarsUI(row, v);
-    doRate(row.dataset.id, row.dataset.k, row.dataset.slot, v, el);
-    setTimeout(refresh, 900);
+  star(el) { const row = el.closest('.stars-row'), v = +el.dataset.v; setStarsUI(row, v); doRate(row.dataset.id, row.dataset.k, row.dataset.slot, v, el); setTimeout(refresh, 900); },
+  water(el) {
+    const L = logOf(el.dataset.k); const n0 = L.water || 0; L.water = Math.max(0, Math.min(30, n0 + (+el.dataset.v))); save(); haptic.tap();
+    if (+el.dataset.v > 0) { const c = el.closest('.tile2'); if (c) { const cup = $('.cup', c); if (cup) cup.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }], { duration: 400 }); } }
+    setTimeout(refresh, 150);
   },
-  glass(el) {
-    const k = el.dataset.k, i = +el.dataset.i, L = logOf(k);
-    L.water = (L.water || 0) === i + 1 ? i : i + 1; save(); haptic.tap();
-    refresh();
-  },
-  water(el) { const L = logOf(el.dataset.k); L.water = Math.max(0, Math.min(30, (L.water || 0) + (+el.dataset.v))); save(); haptic.tap(); refresh(); },
-  wmode(el) { logOf(el.dataset.k).waterMode = el.dataset.v; save(); haptic.tap(); refresh(); },
   drink(el) { ui.drink = el.dataset.v; haptic.tap(); refresh(); },
   step(el) { el.classList.toggle('done'); haptic.tap(); },
   unblock(el) { E.unblock(el.dataset.id); haptic.ok(); toast('<b>' + esc(DISHES[el.dataset.id].name) + '</b> kommt wieder in den Plan.'); refresh(); },
@@ -267,10 +384,70 @@ const A = {
   shuffle(el) {
     haptic.med();
     const icon = el.querySelector('svg'); if (icon) icon.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(720deg)' }], { duration: 700 });
-    $$('.screen:last-child .wday, .screen:last-child .card').forEach((c, i) => c.animate([{ transform: 'none' }, { transform: `translateX(${i % 2 ? 8 : -8}px) rotate(${i % 2 ? 1 : -1}deg)` }, { transform: 'none' }], { duration: 420, delay: i * 30 }));
+    $$('.screen:last-child .dayc').forEach((c, i) => c.animate([{ transform: 'none' }, { transform: `translateX(${i % 2 ? 10 : -10}px) rotate(${i % 2 ? 1.2 : -1.2}deg)` }, { transform: 'none' }], { duration: 420, delay: i * 30 }));
     E.shuffleFuture(); scheduleAll();
     setTimeout(() => { refresh(); toast('Neu gemischt – ab morgen frischer Plan 🎲'); }, 500);
   },
+  quick() {
+    haptic.med();
+    const orb = $('.scan-orb'); if (orb) orb.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(135deg)' }], { duration: 300, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'forwards' });
+    sheet(V.quickSheetHTML(), (el, close) => {
+      $$('.qt', el).forEach((q, i) => q.animate([{ opacity: 0, transform: 'translateY(16px) scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 60 + i * 40, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' }));
+      el.addEventListener('click', e => {
+        const q = e.target.closest('.qt'); if (!q) return;
+        haptic.tap(); close(); const t = E.todayKey();
+        setTimeout(() => {
+          if (q.dataset.q === 'scan') startScan('camera');
+          else if (q.dataset.q === 'rate') { ui.day = t; if (!current().startsWith('#/heute')) go('#/heute'); setTimeout(() => openRate(t), 300); }
+          else if (q.dataset.q === 'water') { const L = logOf(t); L.water = (L.water || 0) + 1; save(); toast('💧 ' + E.lit(L.water * 0.25) + ' L heute'); refresh(); }
+          else if (q.dataset.arg) go(q.dataset.arg);
+        }, 200);
+      });
+    });
+    const obs = new MutationObserver(() => { if (!$('.sheet-wrap')) { obs.disconnect(); if (orb) orb.animate([{ transform: 'rotate(135deg)' }, { transform: 'rotate(0)' }], { duration: 300, fill: 'forwards' }); } });
+    obs.observe(document.body, { childList: true });
+  },
+  /* Training */
+  'no-run'(el) {
+    const k = el.dataset.k; let wid = SP.workoutFor(k);
+    const r = SP.runSession(k);
+    const card = id => { const w = SP.WORKOUTS[id]; return `<div class="nr-card" style="--h:${w.hue}"><span class="wo-e">${w.emoji}</span><div><b>${esc(w.name)}</b><small>${SP.workoutMinutes(id)} Min · ≈ ${SP.workoutKcal(id)} kcal · ${w.focus}</small><span class="ex-strip">${w.ex.map(e => SP.EX[e].emoji).join(' ')}</span></div></div>`; };
+    sheet(`<h2 class="sh-t">Keine Lust zu laufen? 😮‍💨</h2><p class="sh-sub">Okay – aber ganz ohne Bewegung geht’s nicht 😉. Statt „${esc(r.name)}“ machst du heute dieses Mini-Workout. Ohne Geräte, der Timer sagt dir jede Übung an.</p>
+      <div id="nr-pick">${card(wid)}</div>
+      <div class="chips">${Object.entries(SP.WORKOUTS).map(([id, w]) => `<button class="chip tap${id === wid ? ' on' : ''}" data-w="${id}">${w.emoji} ${esc(w.name)}</button>`).join('')}</div>
+      <div class="sh-btns col"><button class="btn big tap" id="nr-go">${ico('play')}Workout starten</button><button class="btn ghost tap" id="nr-look">Übungen ansehen</button><button class="btn ghost tap" data-close>Doch laufen</button></div>`, (sh, close) => {
+      sh.addEventListener('click', e => {
+        const c = e.target.closest('[data-w]');
+        if (c) { wid = c.dataset.w; $$('[data-w]', sh).forEach(x => x.classList.toggle('on', x === c)); $('#nr-pick', sh).innerHTML = card(wid); $('#nr-pick .nr-card', sh).animate([{ opacity: 0, transform: 'scale(.95)' }, { opacity: 1, transform: 'none' }], { duration: 300 }); haptic.tap(); }
+        if (e.target.closest('#nr-go')) { SP.chooseWorkout(k, wid); scheduleAll(); close(); setTimeout(() => go('#/timer/workout/' + wid + '?d=' + k), 250); }
+        if (e.target.closest('#nr-look')) { SP.chooseWorkout(k, wid); scheduleAll(); close(); setTimeout(() => go('#/workout/' + wid + '?d=' + k), 250); }
+      });
+    });
+    watchSheetClose();
+  },
+  'run-done'(el) {
+    const k = el.dataset.k, r = SP.runSession(k);
+    sheet(`<h2 class="sh-t">Gelaufen? Super! 🏃</h2><p class="sh-sub">Trag ein, wie weit und wie lange – ungefähr reicht.</p>
+      <div class="field-2"><label class="field"><span>Kilometer</span><input id="rd-km" type="text" inputmode="decimal" value="${E.lit(r.km)}"></label><label class="field"><span>Minuten</span><input id="rd-min" type="number" inputmode="numeric" value="${r.min}"></label></div>
+      <button class="btn wide tap" id="rd-save">${ico('check')}Speichern</button>`, (sh, close) => {
+      $('#rd-save', sh).addEventListener('click', () => {
+        const km = parseFloat(($('#rd-km', sh).value || '0').replace(',', '.')) || 0, m = parseInt($('#rd-min', sh).value, 10) || r.min;
+        const kcal = Math.round(r.kcal * m / r.min);
+        SP.markRun(k, km, m, kcal); close(); haptic.ok(); confetti(window.innerWidth / 2, window.innerHeight / 2, 40); scheduleAll(); refresh(); toast('Lauf gespeichert – ' + kcal + ' kcal verbrannt 🔥');
+      });
+    });
+  },
+  'wo-done'(el) { const id = el.dataset.id, k = el.dataset.k; SP.markWorkout(k, id, SP.workoutKcal(id), SP.workoutMinutes(id)); haptic.ok(); confetti(window.innerWidth / 2, window.innerHeight / 2, 40); scheduleAll(); toast('Workout erledigt 💪'); refresh(); },
+  'act-undo'(el) { SP.undoAct(el.dataset.k); haptic.tap(); scheduleAll(); refresh(); },
+  'timer-toggle'() {
+    const T = ui.timer; if (!T) return;
+    if (T.paused) { T.end = Date.now() + T.left * 1000; T.paused = false; startTick(); }
+    else { T.left = Math.max(0, T.end - Date.now()) / 1000; T.paused = true; stopTick(); }
+    haptic.tap(); renderTimer(true); runCues();
+  },
+  'timer-skip'() { const T = ui.timer; if (!T) return; haptic.tap(); if (T.paused) { T.idx++; if (T.idx >= T.seq.length) { finishTimer(); return; } T.left = T.seq[T.idx].sec; renderTimer(true); } else { T.end = Date.now() - 1; step(); } runCues(); },
+  'timer-prev'() { const T = ui.timer; if (!T) return; haptic.tap(); T.idx = Math.max(0, T.idx - (T.paused || (T.end - Date.now()) / 1000 < T.seq[T.idx].sec - 3 ? 0 : 1)); if (T.paused) T.left = T.seq[T.idx].sec; else T.end = Date.now() + T.seq[T.idx].sec * 1000; renderTimer(true); runCues(); },
+  'timer-stop'() { confirmStopTimer(); },
   /* Kassenbon */
   scan(el) { haptic.tap(); startScan(el.dataset.src); },
   'scan-text'() { const t = $('#bon-text'); if (t && t.value.trim()) scanText(t.value); else toast('Erst Bon-Text einfügen.'); },
@@ -291,25 +468,36 @@ const A = {
     const wk = 'w' + ui.shopFrom, set = new Set(S.shop[wk] || []), id = el.dataset.id;
     if (set.has(id)) set.delete(id); else set.add(id);
     S.shop[wk] = [...set]; save(); haptic.tap();
-    el.classList.toggle('on'); el.closest('.rc-item').classList.toggle('done');
+    el.classList.toggle('on'); el.closest('.si').classList.toggle('done');
     setTimeout(refresh, 250);
   },
   'shop-reset'() { S.shop['w' + ui.shopFrom] = []; save(); haptic.tap(); refresh(); },
   'shop-from'(el) { ui.shopFrom = E.addDays(E.todayKey(), +el.dataset.v); haptic.tap(); refresh(); },
   /* Profil */
   pset(el) {
-    const k = el.dataset.k; let v = el.dataset.v;
+    const k = el.dataset.k, v = el.dataset.v;
     S.profile[k] = v === '' ? null : v;
     if (k === 'priceMode') E.invalidatePrices();
-    save(); haptic.tap(); refresh();
+    save(); haptic.tap();
+    $$('[data-act="pset"][data-k="' + k + '"]', el.parentElement).forEach(x => x.classList.toggle('on', x === el));
+    if (k === 'runLevel') scheduleAll();
+    if (!el.closest('.sheet')) refresh();
   },
   persons(el) { S.profile.persons = Math.max(1, Math.min(8, S.profile.persons + (+el.dataset.v))); save(); haptic.tap(); refresh(); },
   train(el) {
     const i = +el.dataset.v, s = new Set(S.profile.train || []);
     if (s.has(i)) s.delete(i); else s.add(i);
-    S.profile.train = [...s].sort(); save(); haptic.tap();
-    E.ensurePlan(); refresh();
+    S.profile.train = [...s].sort(); save(); haptic.tap(); E.ensurePlan();
+    el.classList.toggle('on'); if (!el.closest('.sheet')) refresh();
   },
+  runday(el) {
+    const i = +el.dataset.v, s = new Set(S.profile.run || []);
+    if (s.has(i)) s.delete(i); else s.add(i);
+    S.profile.run = [...s].sort(); save(); haptic.tap(); scheduleAll();
+    el.classList.toggle('on'); el.classList.toggle('run');
+    if (!el.closest('.sheet')) refresh();
+  },
+  'run-restart'() { S.profile.runStart = E.todayKey(); save(); scheduleAll(); haptic.ok(); toast('Laufplan startet wieder bei Woche 1.'); refresh(); },
   theme(el) { S.profile.theme = el.dataset.v; save(); applyTheme(); haptic.tap(); refresh(); },
   'rz-filter'(el) { ui.rz = el.dataset.v; haptic.tap(); refresh(); },
   'w-add'() {
@@ -346,22 +534,21 @@ const A = {
     });
   },
   reset() {
-    sheet(`<h2 class="sh-t">Wirklich alles löschen?</h2><p class="sh-sub">Plan, Kassenbons, Bewertungen und Einstellungen werden gelöscht.</p><div class="sh-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn danger tap" id="rst-yes" data-close>Alles löschen</button></div>`, el => {
-      $('#rst-yes', el).addEventListener('click', () => { resetAll(); E.invalidatePrices(); ui.ob = 0; applyTheme(); go('#/heute'); setTimeout(() => go('#/onboarding', { replace: true }), 50); });
+    sheet(`<h2 class="sh-t">Wirklich alles löschen?</h2><p class="sh-sub">Plan, Kassenbons, Bewertungen, Läufe und Einstellungen werden gelöscht.</p><div class="sh-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn danger tap" id="rst-yes" data-close>Alles löschen</button></div>`, el => {
+      $('#rst-yes', el).addEventListener('click', () => { resetAll(); E.invalidatePrices(); ui.ob = 0; S.profile.runStart = E.todayKey(); applyTheme(); go('#/heute'); setTimeout(() => go('#/onboarding', { replace: true }), 50); });
     });
   },
   /* Onboarding */
   'ob-next'() {
     haptic.tap();
     const st = $('.screen:last-child .ob-step');
-    const next = () => { ui.ob = Math.min(3, ui.ob + 1); refresh(false); const n = $('.screen:last-child .ob-step'); n && n.animate([{ opacity: 0, transform: 'translateX(40px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' }); };
+    const next = () => { ui.ob = Math.min(4, ui.ob + 1); refresh(false); const n = $('.screen:last-child .ob-step'); n && n.animate([{ opacity: 0, transform: 'translateX(40px)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' }); };
     if (st) st.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(-40px)' }], { duration: 200, fill: 'forwards' }).onfinish = next; else next();
   },
   async 'ob-notif'() { notifPerm = await notifPermission(true); A['ob-done'](); },
   'ob-done'() {
-    S.profile.onboarded = true; save(true);
-    E.ensurePlan(); scheduleAll();
-    haptic.ok();
+    S.profile.onboarded = true; S.seen.v11 = true; save(true);
+    E.ensurePlan(); scheduleAll(); haptic.ok();
     go('#/heute');
     setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 46); toast('Dein Plan steht! Tippe auf alles – überall gibt’s Erklärungen. ✨'); }, 450);
   }
@@ -370,11 +557,12 @@ const A = {
 /* ---------- Klicks & Eingaben ---------- */
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
-  if (a && !a.closest('.sheet')) { const fn = A[a.dataset.act]; if (fn) { e.preventDefault(); fn(a, e); } return; }
+  const inSheet = a && a.closest('.sheet');
+  if (a && !inSheet) { const fn = A[a.dataset.act]; if (fn) { e.preventDefault(); fn(a, e); } return; }
+  if (a && inSheet && A[a.dataset.act] && !['star', 'eat', 'cooked-cb'].includes(a.dataset.act)) { A[a.dataset.act](a, e); return; }
   const g = e.target.closest('[data-go]');
   if (g && !g.closest('.sheet')) { e.preventDefault(); haptic.tap(); go(g.dataset.go); }
-  if (a && a.closest('.sheet') && A[a.dataset.act] && !['star', 'eat', 'cooked-cb'].includes(a.dataset.act)) A[a.dataset.act](a, e);
-  if (g && g.closest('.sheet')) { window.__sheetClose && window.__sheetClose(); go(g.dataset.go); }
+  else if (g) { window.__sheetClose && window.__sheetClose(); go(g.dataset.go); }
 });
 document.addEventListener('change', e => {
   const el = e.target;
@@ -384,7 +572,9 @@ document.addEventListener('change', e => {
     if (k === 'height' && v) v = Math.max(120, Math.min(230, v));
     if (k === 'weight' && v) v = Math.max(35, Math.min(250, v));
     if (k === 'age' && v) v = Math.max(12, Math.min(100, Math.round(v)));
+    if (k === 'runTime' && !/^\d{2}:\d{2}$/.test(v)) v = S.profile.runTime;
     S.profile[k] = v; save();
+    if (k === 'runTime') scheduleAll();
     if (current().includes('onboarding')) setTimeout(() => refresh(false), 0);
   }
   if (el.dataset.nt) { S.notif[el.dataset.nt].on = el.checked; save(); haptic.tap(); scheduleAll(); refresh(); }
@@ -398,15 +588,22 @@ async function boot() {
   E.ensurePlan();
   initRouter();
   if (!S.profile.onboarded) setTimeout(() => go('#/onboarding', { replace: true }), 30);
+  else if (!S.seen.v11) setTimeout(() => {
+    sheet(`<div class="learn-sum"><span class="ls-emo">🏃✨</span><h2 class="sh-t">Neu: Laufen & Mini-Workouts</h2><p class="sh-sub">Die App plant jetzt Laufeinheiten und erinnert dich daran. Keine Lust zu laufen? Dann gibt’s ein kurzes Workout mit Anleitung und Timer. Stell kurz ein, wann du laufen willst:</p></div>${V.runSetupHTML()}<button class="btn wide tap" data-close>Passt so</button>`);
+    S.seen.v11 = true; save();
+    watchSheetClose();
+  }, 900);
   onBack(() => {
     if (window.__sheetClose) { window.__sheetClose(); return; }
+    if (current().startsWith('#/timer') && ui.timer) { confirmStopTimer(); return; }
     if (current().includes('onboarding')) { exitApp(); return; }
     if (!back()) exitApp();
   });
   let lastDay = E.todayKey();
   onResume(() => {
     if (E.todayKey() !== lastDay) { lastDay = E.todayKey(); ui.day = lastDay; E.ensurePlan(); scheduleAll(); }
-    if (['#/heute', '#/woche', '#/einkauf'].includes(current())) refresh();
+    if (ui.timer && !ui.timer.done && current().startsWith('#/timer')) { step(); renderTimer(true); return; }
+    if (['#/heute', '#/plan', '#/einkauf', '#/training'].includes(current())) refresh();
   });
   if (isNative) {
     await setupNotifications(onNotifAction);

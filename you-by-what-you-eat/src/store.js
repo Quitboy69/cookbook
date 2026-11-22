@@ -6,6 +6,7 @@ const DEFAULT = () => ({
   profile: {
     name: '', height: 172, weight: 64, age: null, sex: null,
     goal: 'muskel', persons: 3, train: [0, 2, 4, 5], priceMode: 'cheapest',
+    run: [1, 3, 6], runTime: '17:30', runLevel: 'einsteiger', runStart: null,
     onboarded: false, theme: 'system'
   },
   plan: {},        // 'YYYY-MM-DD' -> { f, m, mBox, s, a, train }
@@ -16,12 +17,15 @@ const DEFAULT = () => ({
   receipts: [],    // { id, store, date, total, items:[...] }
   shop: {},        // weekKey -> [ingIds]
   weights: [],     // { d, kg }
+  act: {},         // date -> { type: 'run'|'workout', done, km, min, kcal, workout }
   notif: {
     f:    { on: true,  t: '07:00' },
     cook: { on: true,  t: '18:00' },
     rate: { on: true,  t: '20:30' },
     water:{ on: false, t: '10:00,15:30' },
-    shop: { on: true,  day: 5, t: '09:00' }
+    shop: { on: true,  day: 5, t: '09:00' },
+    run:  { on: true },
+    runFollow: { on: true }
   },
   seen: {}         // kleine Hinweise schon gezeigt
 });

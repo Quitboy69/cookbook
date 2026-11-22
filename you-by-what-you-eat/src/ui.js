@@ -46,19 +46,28 @@ const P = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
   people: '<circle cx="9" cy="9" r="3.2"/><circle cx="17" cy="10" r="2.5"/><path d="M3.5 19.5c.8-3 2.9-4.5 5.5-4.5s4.7 1.5 5.5 4.5M15 15.2c2.6-.3 4.6 1 5.5 3.8"/>',
-  leaf: '<path d="M5 19c0-8 5-13.5 14-14-.5 9-6 14-14 14z"/><path d="M5 19c3-4 6-6.5 9.5-8"/>'
+  leaf: '<path d="M5 19c0-8 5-13.5 14-14-.5 9-6 14-14 14z"/><path d="M5 19c3-4 6-6.5 9.5-8"/>',
+  run: '<circle cx="14.5" cy="4.3" r="1.9"/><path d="M8.2 9.6l3.6-1.4 3 2.2 2.6 3"/><path d="M11.8 8.2l-1.9 5.3 3.4 2.7-1.1 5"/><path d="M9.9 13.5l-1.8 3.3-4 .7"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>',
+  pause: '<rect x="6.5" y="5" width="3.8" height="14" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.7" y="5" width="3.8" height="14" rx="1.2" fill="currentColor" stroke="none"/>',
+  next: '<path d="M6 6l8.5 6L6 18z" fill="currentColor"/><path d="M18 6v12"/>',
+  prev: '<path d="M18 6L9.5 12 18 18z" fill="currentColor"/><path d="M6 6v12"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  bolt: '<path d="M13 3L5.5 13.5h6L10.5 21 18.5 10.5h-6z"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'
 };
 export const ico = (n, cls = '') => '<svg class="ic ' + cls + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[n] || '') + '</svg>';
 
 /* ---------- Router ---------- */
 const stack = [];
 let renderFn = null, lastTap = null, busy = false;
-export const TABS = ['heute', 'woche', 'bon', 'einkauf', 'ich'];
+export const TABS = ['heute', 'plan', 'rezepte', 'training', 'einkauf', 'bon'];
+const TAB_OF = { heute: 'heute', plan: 'plan', rezepte: 'plan', training: 'training', einkauf: 'einkauf', bon: 'einkauf' };
 export function setRenderer(fn) { renderFn = fn; }
 export const current = () => stack[stack.length - 1] || '#/heute';
 export function go(route, opts = {}) {
   const tabRoot = TABS.includes(route.replace('#/', ''));
-  if (tabRoot) { stack.length = 0; stack.push(route); show(route, 'tab'); history.replaceState(null, '', route); return; }
+  if (tabRoot) { stack.length = 0; stack.push(route); show(route, opts.mode || 'tab'); history.replaceState(null, '', route); return; }
   stack.push(route);
   history.pushState(null, '', route);
   show(route, opts.replace ? 'none' : 'push');
@@ -80,7 +89,7 @@ window.addEventListener('popstate', () => {
   else { const h = location.hash || '#/heute'; stack.length = 0; stack.push(h); show(h, 'tab'); }
 });
 export function initRouter() {
-  const h = location.hash && location.hash.length > 2 ? location.hash : '#/heute';
+  const h = '#/heute';   // App startet immer bei „Heute“ (keine alten Deep-Links nach Neustart)
   const root = TABS.includes(h.replace('#/', '')) ? h : '#/heute';
   stack.push(root); history.replaceState(null, '', root);
   if (root !== h) { stack.push(h); history.pushState(null, '', h); }
@@ -91,6 +100,7 @@ function show(route, mode) {
   const host = $('#screens');
   if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   const old = host.querySelector('.screen:last-child');
+  const olds = $$('.screen', host);   // nur diese räumt dieser Wechsel später weg
   const el = document.createElement('section');
   el.className = 'screen';
   const out = renderFn(route);
@@ -102,7 +112,7 @@ function show(route, mode) {
   stagger(el, mode !== 'none');
   if (out.mount) out.mount(el);
   countUps(el); rings(el, mode !== 'none');
-  const done = () => { $$('.screen', host).forEach(s => { if (s !== el && s.parentNode) { try { s.remove(); } catch (e) { /* schon weg */ } } }); busy = false; };
+  const done = () => { olds.forEach(s => { if (s !== el && s.parentNode) { try { s.remove(); } catch (e) { /* schon weg */ } } }); busy = false; };
   if (!old || mode === 'none' || reduced()) { done(); return; }
   busy = true;
   const tap = lastTap && Date.now() - lastTap.t < 900 ? lastTap : null;
@@ -125,17 +135,17 @@ function show(route, mode) {
 }
 
 function updateNav(route) {
-  const base = route.replace('#/', '').split('/')[0];
-  const tab = TABS.includes(base) ? base : null;
+  const base = route.replace('#/', '').split(/[/?]/)[0];
+  const tab = TAB_OF[base] || null;
   const nav = $('#nav');
-  nav.classList.toggle('hidden', base === 'onboarding' || base === 'review');
+  nav.classList.toggle('hidden', base === 'onboarding' || base === 'review' || base === 'timer');
   $$('.nav-btn', nav).forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   const on = $('.nav-btn.on', nav);
   const pill = $('#nav-pill');
   if (on && pill) {
     const r = on.getBoundingClientRect(), pr = nav.getBoundingClientRect();
     pill.style.transform = `translateX(${r.left - pr.left + r.width / 2 - 28}px)`;
-    pill.style.opacity = on.classList.contains('nav-scan') ? 0 : 1;
+    pill.style.opacity = 1;
   } else if (pill) pill.style.opacity = 0;
 }
 window.addEventListener('resize', () => updateNav(current()));

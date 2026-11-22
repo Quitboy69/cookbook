@@ -24,6 +24,19 @@ export const lit = n => String(Math.round(n * 100) / 100).replace('.', ',');
 function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 export const rand = seed => { let t = hash(seed) + 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
+/* ---------- Nährwerte aus den Zutaten berechnen ---------- */
+export function nutOf(id) {
+  const d = DISHES[id], t = [0, 0, 0, 0];
+  for (const [ing, amt] of Object.entries(d.need)) {
+    const g = ING[ing]; if (!g || !g.n) continue;
+    const f = g.unit === 'stk' ? amt : amt * 10;        // je Stück bzw. je 100 g/ml
+    for (let i = 0; i < 4; i++) t[i] += g.n[i] * f;
+  }
+  const div = d.slot === 'a' ? 6 : 1;
+  return { kcal: Math.round(t[0] / div / 5) * 5, prot: Math.round(t[1] / div), kh: Math.round(t[2] / div), fat: Math.round(t[3] / div) };
+}
+for (const id of Object.keys(DISHES)) Object.assign(DISHES[id], nutOf(id));
+
 /* ---------- Bedarf ---------- */
 export function bmi(p = S.profile) { return p.weight / Math.pow(p.height / 100, 2); }
 export function bmiLabel(b) { return b < 18.5 ? 'Untergewicht' : b < 25 ? 'Normalgewicht' : b < 30 ? 'Übergewicht' : 'Adipositas'; }
@@ -36,14 +49,16 @@ export function targets(p = S.profile) {
   const age = p.age || 25;
   const sexAdj = p.sex === 'w' ? -161 : p.sex === 'm' ? 5 : -78;
   const bmr = 10 * p.weight + 6.25 * p.height - 5 * age + sexAdj;      // Mifflin-St Jeor
-  const tdays = (p.train || []).length;
+  const tdays = (p.train || []).length;              // Krafttraining; Laufen kommt als „verbrannt“ dazu
   const pal = tdays >= 5 ? 1.725 : tdays >= 3 ? 1.55 : tdays >= 1 ? 1.375 : 1.2;
   const tdee = bmr * pal;
   const g = GOALS[p.goal] || GOALS.muskel;
   const kcal = Math.round((tdee + g.add) / 10) * 10;
   const prot = Math.round(p.weight * g.protein);
   const water = Math.round(p.weight * 0.035 * 4) / 4;                    // ≈ 35 ml/kg
-  return { bmr: Math.round(bmr), pal, tdee: Math.round(tdee), kcal, prot, water, goal: g, estimatedAge: !p.age, estimatedSex: !p.sex };
+  const fat = Math.round(kcal * 0.28 / 9);                                // ≈ 28 % der Energie
+  const kh = Math.round((kcal - prot * 4 - fat * 9) / 4);
+  return { bmr: Math.round(bmr), pal, tdee: Math.round(tdee), kcal, prot, kh, fat, water, goal: g, estimatedAge: !p.age, estimatedSex: !p.sex };
 }
 
 /* ---------- Preise lernen ---------- */
@@ -364,12 +379,12 @@ export function shuffleFuture() {
 /* Tageswerte pro Person */
 export function dayTotals(k) {
   const p = S.plan[k]; if (!p) return { kcal: 0, prot: 0, eur: 0 };
-  const t = { kcal: 0, prot: 0, eur: 0, eaten: 0, eatenProt: 0 };
+  const t = { kcal: 0, prot: 0, kh: 0, fat: 0, eur: 0, eaten: 0, eatenProt: 0, eatenKh: 0, eatenFat: 0 };
   const log = S.log[k] || {};
   for (const sl of ['f', 'm', 's', 'a']) {
     const d = DISHES[p[sl]]; if (!d) continue;
-    t.kcal += d.kcal; t.prot += d.prot; t.eur += dishCost(p[sl]).portion;
-    if (log.eaten && log.eaten[sl]) { t.eaten += d.kcal; t.eatenProt += d.prot; }
+    t.kcal += d.kcal; t.prot += d.prot; t.kh += d.kh; t.fat += d.fat; t.eur += dishCost(p[sl]).portion;
+    if (log.eaten && log.eaten[sl]) { t.eaten += d.kcal; t.eatenProt += d.prot; t.eatenKh += d.kh; t.eatenFat += d.fat; }
   }
   return t;
 }

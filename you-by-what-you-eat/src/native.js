@@ -62,10 +62,13 @@ export async function setupNotifications(onAction) {
   try {
     await LocalNotifications.createChannel({ id: 'meals', name: 'Essen & Bewertungen', description: 'Erinnerungen ans Kochen, Essen und Bewerten', importance: 4, vibration: true, visibility: 1 });
     await LocalNotifications.createChannel({ id: 'tips', name: 'Trinken & Einkauf', description: 'Wasser- und Einkaufs-Erinnerungen', importance: 3, vibration: true, visibility: 1 });
+    await LocalNotifications.createChannel({ id: 'run', name: 'Laufen & Workout', description: 'Lauf-Erinnerungen und Ansagen während des Laufs', importance: 5, vibration: true, visibility: 1 });
     await LocalNotifications.registerActionTypes({ types: [
       { id: 'RATE', actions: [{ id: 'eaten', title: 'Gegessen ✓' }, { id: 'rate', title: 'Jetzt bewerten ★' }] },
       { id: 'COOK', actions: [{ id: 'cooked', title: 'Schon gekocht ✓' }, { id: 'recipe', title: 'Rezept öffnen' }] },
-      { id: 'SHOP', actions: [{ id: 'list', title: 'Einkaufsliste' }, { id: 'scan', title: 'Bon scannen' }] }
+      { id: 'SHOP', actions: [{ id: 'list', title: 'Einkaufsliste' }, { id: 'scan', title: 'Bon scannen' }] },
+      { id: 'RUN', actions: [{ id: 'run-go', title: 'Los geht’s 🏃' }, { id: 'run-wo', title: 'Lieber Workout' }] },
+      { id: 'WO', actions: [{ id: 'wo-go', title: 'Workout starten 💪' }, { id: 'run-go', title: 'Doch laufen' }] }
     ] });
     LocalNotifications.addListener('localNotificationActionPerformed', ev => onAction(ev.actionId, (ev.notification && ev.notification.extra) || {}));
   } catch (e) { /* nicht schlimm */ }
@@ -74,7 +77,8 @@ export async function reschedule(list) {
   if (!isNative) return { ok: false, n: 0 };
   try {
     const pending = await LocalNotifications.getPending();
-    if (pending.notifications.length) await LocalNotifications.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+    const old = pending.notifications.filter(n => n.id < 800000 || n.id >= 900000);   // Lauf-Ansagen (880000+) bleiben
+    if (old.length) await LocalNotifications.cancel({ notifications: old.map(n => ({ id: n.id })) });
     const now = Date.now();
     const notifications = list.filter(n => n.at.getTime() > now + 30000).slice(0, 60).map(n => ({
       id: n.id, title: n.title, body: n.body, largeBody: n.body,
@@ -95,4 +99,26 @@ export async function testNotification() {
     extra: { route: 'rate' }, smallIcon: 'ic_stat_icon', iconColor: '#12B886'
   }] });
   return true;
+}
+
+/* Ansagen während eines Laufs – funktionieren auch bei ausgeschaltetem Bildschirm */
+export async function scheduleRunCues(cues) {
+  if (!isNative) return;
+  try {
+    await cancelRunCues();
+    const now = Date.now();
+    const notifications = cues.filter(c => c.at > now + 1500).slice(0, 40).map((c, i) => ({
+      id: 880000 + i, title: c.title, body: c.body, schedule: { at: new Date(c.at), allowWhileIdle: true },
+      isExactNotification: true, channelId: 'run',   // pünktlich dank USE_EXACT_ALARM, kein Popup
+      smallIcon: 'ic_stat_icon', iconColor: '#FF7A2F', autoCancel: true, extra: { route: 'timer' }
+    }));
+    if (notifications.length) await LocalNotifications.schedule({ notifications });
+  } catch (e) { /* egal */ }
+}
+export async function cancelRunCues() {
+  if (!isNative) return;
+  try {
+    const ids = []; for (let i = 0; i < 40; i++) ids.push({ id: 880000 + i });
+    await LocalNotifications.cancel({ notifications: ids });
+  } catch (e) { /* egal */ }
 }

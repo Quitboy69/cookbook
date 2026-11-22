@@ -1,27 +1,80 @@
-/* Alle Bildschirme der App */
-import { ING, DISHES, SLOTS, STORES, CATS, W_REST, W_TRAIN } from './data.js';
+/* Alle Bildschirme – Design angelehnt an moderne Fitness-/Ernährungs-Apps */
+import { ING, DISHES, STORES, CATS, W_REST, W_TRAIN } from './data.js';
 import { S } from './store.js';
 import * as E from './engine.js';
+import * as SP from './sport.js';
 import { ico, esc, ring } from './ui.js';
 import { isNative } from './native.js';
 
 const { fmtInt, dec, eur, lit, DAYS, DS, MONTHS } = E;
-export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null };
+export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null, rz: 'alle', timer: null };
 
-/* ---------- kleine Bausteine ---------- */
-const dhead = (title, sub = '') => `<header class="dhead"><button class="iconbtn tap" data-act="back" aria-label="Zurück">${ico('back')}</button><div class="dhead-t"><b>${title}</b>${sub ? '<small>' + sub + '</small>' : ''}</div><span class="dhead-s"></span></header>`;
-const emo = (d, cls = '') => `<span class="emo ${cls}" style="--h:${d.hue || 140}">${d.emoji}</span>`;
+/* =========================================================
+   Bausteine
+   ========================================================= */
+const dhead = (title, sub = '', right = '') => `<header class="dhead"><button class="iconbtn tap" data-act="back" aria-label="Zurück">${ico('back')}</button><div class="dhead-t"><b>${title}</b>${sub ? '<small>' + sub + '</small>' : ''}</div><span class="dhead-s">${right}</span></header>`;
 const stars = (v, cls = '') => { if (v == null) return ''; let h = '<span class="stars-mini ' + cls + '" aria-label="' + dec(v, 1) + ' Sterne">'; for (let i = 1; i <= 5; i++) h += '<i class="' + (v >= i - 0.25 ? 'on' : v >= i - 0.75 ? 'half' : '') + '">★</i>'; return h + '</span>'; };
-const tag = (price, l1, l2) => `<span class="ptag"><span class="ptag-p">${dec(price)}</span><span class="ptag-u">€ ${l1}</span>${l2 ? '<span class="ptag-g">' + l2 + '</span>' : ''}</span>`;
+const tag = (price, l1) => `<span class="ptag"><span class="ptag-p">${dec(price)}</span><span class="ptag-u">€ ${l1}</span></span>`;
 const storeDot = id => `<i class="sdot" style="--c:${(STORES[id] || STORES.sonst).color}"></i>`;
 const storeName = id => (STORES[id] || STORES.sonst).name;
 const dLabel = k => { const d = E.dateOf(k); return d.getDate() + '. ' + MONTHS[d.getMonth()]; };
+const dShort = k => { const d = E.dateOf(k); return d.getDate() + '.' + (d.getMonth() + 1) + '.'; };
 const relDay = k => { const n = E.daysBetween(E.todayKey(), k); return n === 0 ? 'Heute' : n === 1 ? 'Morgen' : n === -1 ? 'Gestern' : DAYS[E.wd(k)]; };
-const slotLabel = { f: 'Früh', m: 'Mittag', s: 'Jause', a: 'Abend' };
+const slotLabel = { f: 'Frühstück', m: 'Mittagessen', s: 'Jause', a: 'Abendessen' };
 const slotTime = { f: '07:00', m: '12:30', s: '16:00', a: '19:00' };
 const pct = (a, b) => Math.max(0, Math.min(100, b ? a / b * 100 : 0)).toFixed(1) + '%';
+const greeting = () => { const h = new Date().getHours(); return h < 11 ? 'Guten Morgen' : h < 14 ? 'Mahlzeit' : h < 18 ? 'Hallo' : 'Guten Abend'; };
+const packTxt = g => g.unit === 'stk' ? g.pack + ' Stk' : g.pack < 1 ? fmtInt(g.pack * 1000) + (g.unit === 'kg' ? ' g' : ' ml') : lit(g.pack) + (g.unit === 'kg' ? ' kg' : ' L');
 
-function greeting() { const h = new Date().getHours(); return h < 11 ? 'Guten Morgen' : h < 14 ? 'Mahlzeit' : h < 18 ? 'Schönen Nachmittag' : 'Guten Abend'; }
+/* „Foto“ eines Gerichts: Teller mit Hauptgericht + verstreute Zutaten (Flatlay) */
+const SPOTS = [[12, 18, -14], [80, 14, 12], [86, 70, -8], [10, 74, 16], [50, 88, 4], [92, 42, -20]];
+export function photo(id, cls = '') {
+  const d = DISHES[id];
+  const extra = [...new Set(Object.keys(d.need).map(i => ING[i].e).filter(e => e && e !== d.emoji))].slice(0, 5);
+  return `<div class="ph ${cls}" style="--h:${d.hue}"><i class="ph-tex"></i>${extra.map((e, i) => `<span class="ph-i" style="left:${SPOTS[i][0]}%;top:${SPOTS[i][1]}%;--r:${SPOTS[i][2]}deg">${e}</span>`).join('')}<span class="ph-plate"><span class="ph-e">${d.emoji}</span></span></div>`;
+}
+/* Runder Teller mit Fortschrittsring (für Listen) */
+export const plate = (id, p = 0, cls = '') => { const d = DISHES[id]; return `<span class="fc ${cls}" style="--h:${d.hue};--p:${Math.max(0, Math.min(1, p))}"><span class="fc-in">${d.emoji}</span></span>`; };
+function dishTags(id) {
+  const d = DISHES[id], t = [];
+  if (d.min <= 15) t.push('Schnell'); else if (d.min <= 30) t.push('Einfach');
+  if (d.slot === 'a') t.push('Meal-Prep');
+  if (d.prot >= 35) t.push('High-Protein');
+  if (E.dishCost(id).portion < 1.0) t.push('Günstig');
+  if (d.protein === 'veggie') t.push('Veggie');
+  return t.slice(0, 3);
+}
+/* Wochen-Kreise (Mo–So) */
+function weekCircles(sel) {
+  const t = E.todayKey(), mon = E.addDays(t, -E.wd(t));
+  let h = '<div class="wk">';
+  for (let i = 0; i < 7; i++) {
+    const k = E.addDays(mon, i), p = S.plan[k];
+    const tot = p ? E.dayTotals(k) : null;
+    const prog = tot && tot.kcal ? Math.min(1, tot.eaten / tot.kcal) : 0;
+    const a = SP.actOf(k), run = SP.isRunDay(k);
+    const done = prog >= 0.99;
+    h += `<button class="wc tap${k === sel ? ' sel' : ''}${k === t ? ' today' : ''}${!p ? ' off' : ''}" ${p ? `data-act="day" data-k="${k}"` : 'disabled'} style="--p:${prog}"><small>${DS[i]}</small><span class="wc-r"><span class="wc-in">${done ? ico('check') : E.dateOf(k).getDate()}</span></span><i class="wc-a${run ? (a && a.done ? ' done' : ' plan') : ''}"></i></button>`;
+  }
+  return h + '</div>';
+}
+/* Halbkreis-Anzeige: Gegessen | Übrig | Verbrannt */
+function gauge(eaten, goal, burned) {
+  const total = goal + burned, left = total - eaten, p = Math.min(1, eaten / total);
+  const L = Math.PI * 92;
+  return `<div class="gauge">
+    <svg viewBox="0 0 220 124" aria-hidden="true"><defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="var(--g1)"/><stop offset="1" stop-color="var(--g2)"/></linearGradient></defs>
+      <path d="M18 112 A92 92 0 0 1 202 112" class="g-track" fill="none" stroke-width="14" stroke-linecap="round"/>
+      <path d="M18 112 A92 92 0 0 1 202 112" class="ring-fg g-fg" fill="none" stroke="url(#gg)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${L.toFixed(2)}" data-p="${p}"/></svg>
+    <button class="g-side l tap" data-go="#/info/kcal"><b data-count="${eaten}">0</b><small>Gegessen</small></button>
+    <button class="g-mid tap" data-go="#/info/kcal"><b data-count="${Math.abs(left)}">0</b><small>${left >= 0 ? 'Übrig' : 'drüber'}</small></button>
+    <button class="g-side r tap" data-go="#/info/verbrannt"><b data-count="${burned}">0</b><small>Verbrannt</small></button>
+  </div>`;
+}
+function macroBars(tot, T) {
+  const m = [['kh', 'Kohlenhydrate', tot.eatenKh, T.kh, tot.kh], ['prot', 'Eiweiß', tot.eatenProt, T.prot, tot.prot], ['fat', 'Fett', tot.eatenFat, T.fat, tot.fat]];
+  return `<div class="macros">${m.map(([k, l, v, t, pl]) => `<button class="mac tap m-${k}" data-go="#/info/makros"><small>${l}</small><span class="mbar"><i class="plan" style="width:${pct(pl, t)}"></i><i data-w="${pct(v, t)}"></i></span><b>${fmtInt(v)} / ${fmtInt(t)} g</b></button>`).join('')}</div>`;
+}
 
 /* =========================================================
    HEUTE
@@ -29,146 +82,187 @@ function greeting() { const h = new Date().getHours(); return h < 11 ? 'Guten Mo
 export function heute() {
   E.ensurePlan();
   const t = E.todayKey();
-  if (!ui.day || E.daysBetween(t, ui.day) < -2 || E.daysBetween(t, ui.day) > 6) ui.day = t;
+  if (!ui.day || !S.plan[ui.day]) ui.day = t;
   const k = ui.day, p = S.plan[k];
   const T = E.targets(), tot = E.dayTotals(k);
   const isToday = k === t;
   const log = S.log[k] || {};
+  const burned = SP.burned(k);
   const name = S.profile.name ? ', ' + esc(S.profile.name) : '';
-
-  let days = '';
-  for (let i = -2; i <= 6; i++) {
-    const dk = E.addDays(t, i);
-    if (!S.plan[dk]) continue;
-    const L = S.log[dk] || {};
-    const rated = ['f', 'm', 's', 'a'].some(sl => E.ratingOf(S.plan[dk][sl], dk, sl) != null);
-    days += `<button class="day tap${dk === k ? ' on' : ''}${dk === t ? ' today' : ''}" data-act="day" data-k="${dk}"><small>${DS[E.wd(dk)]}</small><b>${E.dateOf(dk).getDate()}</b><i class="ddot${L.cooked || rated ? ' done' : ''}${S.plan[dk].train ? ' tr' : ''}"></i></button>`;
-  }
-
-  const meals = p ? SLOTS.map((s, i) => mealCard(k, s.k, p, log)).join('') : '';
   const a = p && DISHES[p.a];
   const cost = a ? E.dishCost(p.a) : null;
-  const why = a ? E.whyDish(p.a, k) : [];
-  const ratePrompt = isToday && new Date().getHours() >= 18 || E.daysBetween(k, t) > 0;
-  const unrated = p && E.ratingOf(p.a, k, 'a') == null;
-  const W = waterCard(k);
+  const act = SP.plannedActivity(k);
   const promos = topPromos(3);
+  const evening = isToday && new Date().getHours() >= 18;
+  const unrated = p && E.ratingOf(p.a, k, 'a') == null;
+
+  // „Als Nächstes“
+  const nextSl = p ? ['f', 'm', 's', 'a'].find(sl => !(log.eaten && log.eaten[sl])) : null;
+  let next = '';
+  if (nextSl) {
+    const d = DISHES[p[nextSl]];
+    next += `<div class="nx m"><i class="nx-bar"></i><button class="nx-main tap" data-go="#/dish/${p[nextSl]}?d=${k}&s=${nextSl}">${plate(p[nextSl], 0, 'sm')}<span><small>${isToday ? 'Nächste Mahlzeit' : slotLabel[nextSl]} · ${slotTime[nextSl]}</small><b>${esc(d.name)}</b><em>Eiweiß <u>${d.prot} g</u> · KH <u>${d.kh} g</u> · Fett <u>${d.fat} g</u></em></span></button><button class="nx-btn tap" data-act="eat" data-k="${k}" data-slot="${nextSl}" aria-label="gegessen">${ico('plus')}</button></div>`;
+  }
+  if (act && !act.done) {
+    if (act.kind === 'run') {
+      const r = act.session;
+      next += `<div class="nx r"><i class="nx-bar"></i><button class="nx-main tap" data-go="#/run/${k}"><span class="nx-ico run">${ico('run')}</span><span><small>Nächste Aktivität · ${S.profile.runTime}</small><b>${esc(r.name)}</b><em>${ico('clock', 'xs')}${r.min} Min · <span class="zdot" style="--c:${SP.ZONES[r.zone].c}"></span>Z${r.zone} · ≈ ${lit(r.km)} km</em></span></button><button class="nx-btn play tap" data-go="#/timer/run/${k}" aria-label="Lauf starten">${ico('play')}</button></div>`;
+    } else {
+      const w = SP.WORKOUTS[act.id];
+      next += `<div class="nx w"><i class="nx-bar"></i><button class="nx-main tap" data-go="#/workout/${act.id}?d=${k}"><span class="nx-ico wo">${w.emoji}</span><span><small>Statt Laufen · Mini-Workout</small><b>${esc(w.name)}</b><em>${ico('clock', 'xs')}${act.min} Min · ≈ ${act.kcal} kcal</em></span></button><button class="nx-btn play tap" data-go="#/timer/workout/${act.id}?d=${k}" aria-label="Workout starten">${ico('play')}</button></div>`;
+    }
+  } else if (act && act.done) {
+    next += `<div class="nx d"><i class="nx-bar"></i><span class="nx-main"><span class="nx-ico ok">${ico('check')}</span><span><small>Aktivität erledigt</small><b>${act.kind === 'run' ? 'Gelaufen' + (act.km ? ' · ' + lit(act.km) + ' km' : '') : esc(SP.WORKOUTS[act.id].name)}</b><em>${act.min} Min · ${act.kcal} kcal verbrannt 🔥</em></span></span></div>`;
+  }
+  if (!next) next = `<div class="nx d"><i class="nx-bar"></i><span class="nx-main"><span class="nx-ico ok">${ico('check')}</span><span><small>${relDay(k)}</small><b>Alles erledigt – stark! 🎉</b></span></span></div>`;
+
+  const per = S.profile.persons;
+  const meals = p ? ['f', 'm', 's', 'a'].map(sl => {
+    const id = p[sl], d = DISHES[id], eaten = log.eaten && log.eaten[sl];
+    const amt = sl === 'a' ? (ui.amt === 'all' ? '1 Topf · ' + per * 2 + ' Portionen' : '1 Portion') : sl === 'm' && p.mBox ? (ui.amt === 'all' ? per + ' Boxen' : '1 Box') + ' vom Vorabend' : Object.entries(d.need).slice(0, 3).map(([ing, x]) => E.fmtIng(ing, x * (ui.amt === 'all' ? per : 1))).join(' · ');
+    return `<li class="ml${eaten ? ' eaten' : ''}"><button class="ml-main tap" data-go="#/dish/${id}?d=${k}&s=${sl}">${plate(id, eaten ? 1 : 0)}<span class="ml-t"><b>${slotLabel[sl]}${sl === 'f' ? ' <span class="flag flag-small">klein</span>' : ''}${sl === 'm' && p.mBox ? ' <span class="flag flag-box">Box</span>' : ''}${sl === 'a' ? ' <span class="flag flag-cook">kochen</span>' : ''}</b><span>${esc(d.name)}</span><small>${eaten ? fmtInt(d.kcal) : 0} / ${fmtInt(d.kcal)} kcal · ${amt}</small></span></button><button class="ml-add tap${eaten ? ' on' : ''}" data-act="eat" data-k="${k}" data-slot="${sl}" aria-label="${eaten ? 'gegessen' : 'als gegessen markieren'}">${ico(eaten ? 'check' : 'plus')}</button></li>`;
+  }).join('') : '';
 
   return { html: `
-  <div class="page">
+  <div class="page home">
+    <div class="mesh" aria-hidden="true"></div>
     <header class="top rise">
-      <div class="top-t">
-        <p class="kicker">${greeting()}${name} · ${dLabel(t)}</p>
-        <h1 class="brand">You By <span>What You Eat</span></h1>
-      </div>
+      <div><p class="kicker">${greeting()}${name}</p><h1 class="h1">${isToday ? 'Heute' : relDay(k)}</h1><p class="sub">${DAYS[E.wd(k)]}, ${dLabel(k)}${p && p.train ? ' · <span class="ok">Krafttraining</span>' : ''}${SP.isRunDay(k) ? ' · <span class="run-c">Lauftag</span>' : ''}</p></div>
       <button class="avatar tap" data-go="#/ich" aria-label="Profil">${S.profile.name ? esc(S.profile.name[0].toUpperCase()) : ico('user')}</button>
     </header>
+    <div class="rise">${weekCircles(k)}</div>
 
-    <nav class="days rise" aria-label="Tag wählen">${days}</nav>
+    <article class="card next rise"><div class="row-b"><h2 class="c-h">Als Nächstes</h2><button class="link tap" data-go="#/plan">Wochenplan ${ico('chev', 'xs')}</button></div>${next}</article>
 
-    <article class="card hero rise">
-      <div class="hero-head">
-        <div><p class="kicker">${relDay(k)} · ${DAYS[E.wd(k)]}</p><h2 class="h-day">${isToday ? 'Dein Tag' : relDay(k)}</h2></div>
-        <button class="flag ${p && p.train ? 'flag-train' : 'flag-rest'} tap" data-go="#/info/training">${ico(p && p.train ? 'dumbbell' : 'leaf')}${p && p.train ? 'Trainingstag' : 'Ruhetag'}</button>
-      </div>
-      <div class="hero-body">
-        <button class="ring-wrap tap" data-go="#/info/kcal" aria-label="Kalorien erklärt">
-          ${ring(tot.kcal / T.kcal, 128, 12, 'ring-kcal')}
-          <span class="ring-c"><b data-count="${tot.kcal}">0</b><small>von ${fmtInt(T.kcal)} kcal</small></span>
-        </button>
-        <div class="hero-tiles">
-          <button class="mini tap" data-go="#/info/eiweiss">${ico('muscle')}<span><b data-count="${tot.prot}" data-suf=" g">0</b><small>Eiweiß · Ziel ${T.prot} g</small></span></button>
-          <button class="mini tap" data-go="#/info/kosten">${ico('euro')}<span><b data-count="${tot.eur}" data-dec="2" data-suf=" €">0</b><small>pro Person</small></span></button>
-          <button class="mini tap" data-go="#/info/abwechslung">${ico('spark')}<span><b>${E.varietyScore(t).distinct}</b><small>Gerichte diese Woche</small></span></button>
-        </div>
-      </div>
-      ${isToday ? `<button class="eaten tap" data-act="rate-open" data-k="${k}"><span>Heute gegessen</span><span class="bar"><i data-w="${pct(tot.eaten, T.kcal)}"></i></span><b>${fmtInt(tot.eaten)} kcal</b></button>` : ''}
+    <article class="card rise">
+      ${gauge(tot.eaten, T.kcal, burned)}
+      ${macroBars(tot, T)}
+      <p class="plan-note">${ico('book', 'xs')} Plan: ${fmtInt(tot.kcal)} kcal · ${tot.prot} g Eiweiß · ${eur(tot.eur)} pro Person</p>
     </article>
 
+    <article class="card rise"><div class="row-b"><h2 class="c-h">Mahlzeiten</h2><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">1 Pers.</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${per}</button></div></div><ul class="mlist">${meals}</ul></article>
+
     ${a ? `
-    <article class="card cook rise" style="--h:${a.hue}">
-      <div class="cook-glow"></div>
-      <div class="cook-top">
-        <p class="kicker">${isToday ? 'Heute Abend kochen' : DAYS[E.wd(k)] + 'abend kochen'}${log.cooked ? ' · <span class="ok">gekocht ✓</span>' : ''}</p>
-        <button class="iconbtn sm tap" data-act="reroll" data-slot="a" aria-label="Anderes Gericht">${ico('shuffle')}</button>
-      </div>
-      <button class="cook-main tap" data-go="#/dish/${p.a}?d=${k}&s=a">
-        <span class="cook-emo float">${a.emoji}</span>
-        <span class="cook-txt"><b class="cook-name">${esc(a.name)}</b><small>≈ ${a.min} Min · ${fmtInt(a.kcal)} kcal · ${a.prot} g Eiweiß</small>${stars(E.avgRating(p.a))}</span>
-      </button>
-      <button class="portions tap" data-go="#/info/box">
-        <span class="p-g">${ico('plate').repeat(Math.min(S.profile.persons, 4))}<small>${S.profile.persons} Teller jetzt</small></span>
-        <span class="p-g box">${ico('box').repeat(Math.min(S.profile.persons, 4))}<small>${S.profile.persons} ${S.profile.persons === 1 ? 'Box' : 'Boxen'} → ${DAYS[E.wd(E.addDays(k, 1))]} Mittag</small></span>
-      </button>
-      ${why.length ? '<div class="why">' + why.slice(0, 3).map(w => '<span class="chip-s">' + esc(w) + '</span>').join('') + '</div>' : ''}
+    <article class="card cook rise">
+      <button class="cook-ph tap" data-go="#/dish/${p.a}?d=${k}&s=a">${photo(p.a)}<span class="ph-over"><small>${isToday ? 'Heute Abend kochen' : DAYS[E.wd(k)] + 'abend kochen'}${log.cooked ? ' · gekocht ✓' : ''}</small><b>${esc(a.name)}</b></span></button>
+      <div class="stats3"><span>${ico('bolt')}<b>${fmtInt(a.kcal)} kcal</b></span><span>${ico('clock')}<b>${a.min} Min</b></span><span>${ico('people')}<b>${per * 2} Portionen</b></span></div>
+      <div class="pills">${dishTags(p.a).map(x => '<span class="pill">' + x + '</span>').join('')}<button class="pill ghost tap" data-go="#/info/box">${ico('box', 'xs')}${per} Boxen → morgen</button></div>
       <div class="cook-actions">
         <button class="btn tap" data-go="#/dish/${p.a}?d=${k}&s=a">${ico('book')}Rezept</button>
-        <button class="btn ghost tap${log.cooked ? ' on' : ''}" data-act="cooked" data-k="${k}">${ico('check')}${log.cooked ? 'Gekocht' : 'Hab gekocht'}</button>
-        ${tag(cost.portion, 'pro<br>Portion', 'Topf ' + eur(cost.total * E.potFactor()))}
+        <button class="btn ghost tap${log.cooked ? ' on' : ''}" data-act="cooked" data-k="${k}">${ico('check')}${log.cooked ? 'Gekocht' : 'Gekocht?'}</button>
+        <button class="iconbtn tap" data-act="reroll" data-slot="a" aria-label="Anderes Gericht">${ico('shuffle')}</button>
+        ${tag(cost.portion, 'pro<br>Portion')}
       </div>
     </article>` : ''}
 
-    ${p && (ratePrompt || unrated && E.daysBetween(k, t) > 0) ? `
+    ${p && (evening || (unrated && E.daysBetween(k, t) > 0)) ? `
     <article class="card rate-card rise">
-      <div><p class="kicker">${isToday ? 'Schon gegessen?' : relDay(k) + ' bewerten'}</p><h3>Wie war ${esc(a.name)}?</h3></div>
+      <p class="kicker">${isToday ? 'Schon gegessen?' : relDay(k) + ' bewerten'}</p><h3>Wie war ${esc(a.name)}?</h3>
       <div class="rate-inline">${[1, 2, 3, 4, 5].map(i => `<button class="star tap${(E.ratingOf(p.a, k, 'a') || 0) >= i ? ' on' : ''}" data-act="quick-rate" data-k="${k}" data-v="${i}" aria-label="${i} Sterne">★</button>`).join('')}</div>
       <button class="link tap" data-act="rate-open" data-k="${k}">Alle Mahlzeiten bewerten →</button>
     </article>` : ''}
 
-    <div class="sec-h rise"><h2>Tagesplan</h2><div class="seg" role="group"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">pro Person</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${S.profile.persons}</button></div></div>
-    <ol class="meals">${meals}</ol>
+    <div class="duo rise">${waterTile(k)}${moveTile(k, act)}</div>
 
-    ${W}
-
-    ${promos.length ? `<article class="card promo-card rise">
-      <div class="row-b"><h3 class="c-t">${ico('tag')}Gerade in Aktion</h3><button class="link tap" data-go="#/promos">Alle →</button></div>
-      ${promos.map(pr => `<button class="promo-row tap" data-go="#/ing/${pr.ing}">${storeDot(pr.store)}<span><b>${esc(ING[pr.ing].name)}</b><small>${storeName(pr.store)} · seit ${dLabel(pr.d)}</small></span><em>${pr.pct ? '−' + pr.pct + ' %' : eur(pr.price)}</em></button>`).join('')}
-    </article>` : `<button class="card hint-card rise tap" data-go="#/bon"><span class="hint-ico">${ico('scan')}</span><span><b>Kassenbon scannen</b><small>Dann lernt die App die Preise und Aktionen deines Supermarkts.</small></span>${ico('chev')}</button>`}
+    ${promos.length ? `<article class="card rise"><div class="row-b"><h2 class="c-h">${ico('tag', 'xs')} Gerade in Aktion</h2><button class="link tap" data-go="#/promos">Alle ${ico('chev', 'xs')}</button></div>
+      ${promos.map(pr => `<button class="promo-row tap" data-go="#/ing/${pr.ing}"><span class="pr-e">${ING[pr.ing].e}</span><span><b>${esc(ING[pr.ing].name)}</b><small>${storeDot(pr.store)}${storeName(pr.store)} · seit ${dShort(pr.d)}</small></span><em>${pr.pct ? '−' + pr.pct + ' %' : eur(pr.price)}</em></button>`).join('')}</article>`
+      : `<button class="card hint-card rise tap" data-go="#/bon"><span class="hint-ico">${ico('scan')}</span><span><b>Kassenbon scannen</b><small>Dann lernt die App die Preise und Aktionen deines Supermarkts.</small></span>${ico('chev')}</button>`}
   </div>` };
 }
 
-function mealCard(k, sl, p, log) {
-  const id = p[sl], d = DISHES[id]; if (!d) return '';
-  const c = E.dishCost(id);
-  const eaten = log.eaten && log.eaten[sl];
-  const r = E.ratingOf(id, k, sl);
-  let amt;
-  const per = S.profile.persons;
-  if (sl === 'm' && p.mBox) amt = (ui.amt === 'all' ? per + ' Boxen' : '1 Box') + ' vom Vorabend · 2–3 Min aufwärmen';
-  else if (sl === 'a') amt = ui.amt === 'all' ? '1 Topf = ' + (per * 2) + ' Portionen: ' + per + ' Teller + ' + per + ' Boxen' : '1 Portion · Rest in Boxen für morgen';
-  else amt = Object.entries(d.need).map(([ing, a]) => E.fmtIng(ing, a * (ui.amt === 'all' ? per : 1))).join(' · ');
-  const flags = (sl === 'm' && p.mBox ? '<span class="flag flag-box">Box</span>' : '') + (sl === 'a' ? '<span class="flag flag-cook">kochen</span>' : '') + (sl === 'f' ? '<span class="flag flag-small">klein</span>' : '') + (d.train && p.train ? '<span class="flag flag-train">nach Training</span>' : '');
-  return `<li class="meal rise${eaten ? ' eaten' : ''}">
-    <button class="meal-main tap" data-go="#/dish/${id}?d=${k}&s=${sl}">
-      ${emo(d)}
-      <span class="m-body"><span class="m-top"><span class="m-slot">${slotLabel[sl]} · ${slotTime[sl]}</span>${flags}</span>
-      <b class="m-name">${esc(d.name)}</b>
-      <span class="m-amt">${amt}</span>
-      <span class="m-meta">${fmtInt(d.kcal)} kcal · ${d.prot} g Eiweiß · ${eur(c.portion)}${r != null ? ' · ' + stars(r) : ''}</span></span>
-    </button>
-    <button class="eat tap${eaten ? ' on' : ''}" data-act="eat" data-k="${k}" data-slot="${sl}" aria-label="${eaten ? 'gegessen' : 'als gegessen markieren'}">${ico('check')}</button>
-  </li>`;
-}
-
-function waterGoal(k) { const T = E.targets(); const L = S.log[k] || {}; const mode = L.waterMode || ((S.plan[k] || {}).train ? 'train' : 'rest'); return { mode, glasses: Math.round((T.water + (mode === 'train' ? 1 : 0)) / 0.25) }; }
-function waterCard(k) {
+function waterGoal(k) { const T = E.targets(); const L = S.log[k] || {}; const mode = L.waterMode || ((S.plan[k] || {}).train || SP.isRunDay(k) ? 'train' : 'rest'); return { mode, glasses: Math.round((T.water + (mode === 'train' ? 1 : 0)) / 0.25) }; }
+function waterTile(k) {
   const L = S.log[k] || {}, n = L.water || 0, g = waterGoal(k);
-  let gl = '';
-  for (let i = 0; i < g.glasses; i++) gl += `<button class="glass tap${i < n ? ' full' : ''}" data-act="glass" data-k="${k}" data-i="${i}" aria-label="Glas ${i + 1}"><svg viewBox="0 0 24 30"><defs><clipPath id="gc${i}"><path d="M5 4h14l-1.6 21a2 2 0 0 1-2 1.9H8.6a2 2 0 0 1-2-1.9z"/></clipPath></defs><g clip-path="url(#gc${i})"><rect class="gw" x="0" y="0" width="24" height="30"/></g><path d="M5 4h14l-1.6 21a2 2 0 0 1-2 1.9H8.6a2 2 0 0 1-2-1.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>`;
-  return `<article class="card water rise">
-    <div class="row-b"><button class="w-title tap" data-go="#/trinken">${ico('drop')}Wasser ${k === E.todayKey() ? 'heute' : ''} ${ico('chev', 'sm')}</button>
-      <div class="seg"><button class="tap${g.mode === 'rest' ? ' on' : ''}" data-act="wmode" data-k="${k}" data-v="rest">Ruhetag</button><button class="tap${g.mode === 'train' ? ' on' : ''}" data-act="wmode" data-k="${k}" data-v="train">Training</button></div></div>
-    <div class="w-amount"><b>${lit(n * 0.25)}</b><span>von ${lit(g.glasses * 0.25)} L</span></div>
-    <div class="meter water-m"><i data-w="${pct(n, g.glasses)}"></i></div>
-    <div class="glasses">${gl}</div>
-    <div class="w-actions"><button class="btn ghost sm tap" data-act="water" data-k="${k}" data-v="-1">${ico('minus')}Glas</button><button class="btn sm tap" data-act="water" data-k="${k}" data-v="1">${ico('plus')}Glas (0,25 L)</button></div>
+  return `<article class="card tile2 water">
+    <button class="t2-h tap" data-go="#/trinken"><span class="t2-ico">${ico('drop')}</span><b>Wasser</b></button>
+    <div class="t2-v"><b>${lit(n * 0.25)}</b> / ${lit(g.glasses * 0.25)} L</div>
+    <div class="cup" style="--p:${Math.min(1, n / g.glasses).toFixed(3)}"><i class="wave"></i></div>
+    <div class="t2-act"><button class="mini-btn tap" data-act="water" data-k="${k}" data-v="-1" aria-label="Glas weniger">${ico('minus')}</button><button class="mini-btn on tap" data-act="water" data-k="${k}" data-v="1" aria-label="Glas mehr">${ico('plus')}</button></div>
   </article>`;
 }
-
+function moveTile(k, act) {
+  const doneMin = act && act.done ? act.min : 0, planMin = act ? act.min : 0;
+  return `<article class="card tile2 move">
+    <button class="t2-h tap" data-go="#/training"><span class="t2-ico">${ico('run')}</span><b>Bewegung</b></button>
+    <div class="t2-v"><b>${doneMin}</b> / ${planMin || '–'} Min</div>
+    <div class="cup run" style="--p:${planMin ? Math.min(1, doneMin / planMin).toFixed(3) : 0}"><i class="wave"></i><span>${act ? (act.kind === 'run' ? '🏃' : SP.WORKOUTS[act.id].emoji) : '🧘'}</span></div>
+    <button class="btn sm wide tap" data-go="${act && !act.done ? (act.kind === 'run' ? '#/run/' + k : '#/workout/' + act.id + '?d=' + k) : '#/training'}">${act && !act.done ? (act.kind === 'run' ? 'Lauf · ' + S.profile.runTime : 'Workout') : act ? 'Erledigt ✓' : 'Training'}</button>
+  </article>`;
+}
 function topPromos(n) {
   const L = E.learned().info, out = [];
   for (const [ing, per] of Object.entries(L)) for (const [store, x] of Object.entries(per)) if (x.promoNow) out.push({ ing, store, d: x.promoNow.d, pct: x.promoNow.pct, price: x.promoNow.per });
   return out.sort((a, b) => b.d < a.d ? -1 : 1).slice(0, n);
+}
+
+/* =========================================================
+   PLAN (Woche) & REZEPTE
+   ========================================================= */
+const planSeg = on => `<div class="seg wide top-seg rise"><button class="tap${on === 'plan' ? ' on' : ''}" data-go="#/plan">Wochenplan</button><button class="tap${on === 'rezepte' ? ' on' : ''}" data-go="#/rezepte">Rezepte</button></div>`;
+export function plan() {
+  E.ensurePlan();
+  const t = E.todayKey(), T = E.targets();
+  const days = []; for (let i = 0; i < 7; i++) days.push(E.addDays(t, i));
+  const tots = days.map(E.dayTotals);
+  const avgK = tots.reduce((s, x) => s + x.kcal, 0) / 7, avgP = tots.reduce((s, x) => s + x.prot, 0) / 7, sumE = tots.reduce((s, x) => s + x.eur, 0);
+  const v = E.varietyScore(t);
+  const max = Math.max(T.kcal * 1.15, ...tots.map(x => x.kcal));
+  return { html: `
+  <div class="page">
+    <div class="mesh m2" aria-hidden="true"></div>
+    <header class="top rise"><div><p class="kicker">${dLabel(days[0])} – ${dLabel(days[6])}</p><h1 class="h1">Plan</h1></div></header>
+    ${planSeg('plan')}
+    <div class="tiles4">
+      <button class="tile tap rise" data-go="#/info/kcal">${ico('bolt')}<b data-count="${avgK}">0</b><small>Ø kcal / Tag</small></button>
+      <button class="tile tap rise" data-go="#/info/eiweiss">${ico('muscle')}<b data-count="${avgP}" data-suf=" g">0</b><small>Ø Eiweiß / Tag</small></button>
+      <button class="tile tap rise" data-go="#/info/kosten">${ico('euro')}<b data-count="${sumE}" data-dec="2" data-suf=" €">0</b><small>pro Person / Woche</small></button>
+      <button class="tile tap rise" data-go="#/info/abwechslung">${ico('spark')}<b data-count="${v.distinct}">0</b><small>verschiedene Gerichte</small></button>
+    </div>
+    <article class="card rise">
+      <h3 class="c-h">Kalorien pro Tag</h3>
+      <div class="chart">
+        <i class="target" style="bottom:${(T.kcal / max * 140 + 38).toFixed(1)}px"><span>Ziel ${fmtInt(T.kcal)}</span></i>
+        ${tots.map((x, i) => `<button class="col tap${i === 0 ? ' today' : ''}" data-act="day" data-k="${days[i]}" data-tab="1"><span class="cv">${dec(x.kcal / 1000, 1)}k</span><span class="cb"><i data-h="${(x.kcal / max * 100).toFixed(1)}%"></i></span><small>${DS[E.wd(days[i])]}</small><em class="col-run">${SP.isRunDay(days[i]) ? '🏃' : ''}</em></button>`).join('')}
+      </div>
+    </article>
+    ${days.map((k, i) => { const p = S.plan[k], act = SP.plannedActivity(k); return `
+    <article class="card dayc rise${i === 0 ? ' is-today' : ''}">
+      <button class="dc-h tap" data-act="day" data-k="${k}" data-tab="1"><span class="dc-d"><small>${DS[E.wd(k)]}</small><b>${E.dateOf(k).getDate()}</b></span><span class="dc-t"><b>${relDay(k)}</b><small>${fmtInt(tots[i].kcal)} kcal · ${tots[i].prot} g Eiweiß · ${eur(tots[i].eur)}</small></span>${ico('chev')}</button>
+      <div class="dc-macros"><i class="m-kh" style="flex:${tots[i].kh * 4}"></i><i class="m-prot" style="flex:${tots[i].prot * 4}"></i><i class="m-fat" style="flex:${tots[i].fat * 9}"></i></div>
+      <div class="dc-meals">${['f', 'm', 's', 'a'].map(sl => `<button class="dm tap" data-go="#/dish/${p[sl]}?d=${k}&s=${sl}">${plate(p[sl], 0, 'xs')}<span><small>${slotLabel[sl]}</small>${esc(DISHES[p[sl]].name)}</span></button>`).join('')}</div>
+      ${act || p.train ? `<div class="dc-act">${act ? `<button class="chip tap act-${act.kind}${act.done ? ' done' : ''}" data-go="${act.kind === 'run' ? '#/run/' + k : '#/workout/' + act.id + '?d=' + k}">${act.kind === 'run' ? ico('run') + esc(act.session.name) + ' · ' + act.min + ' Min' : SP.WORKOUTS[act.id].emoji + ' ' + esc(SP.WORKOUTS[act.id].name)}${act.done ? ' ✓' : ''}</button>` : ''}${p.train ? `<span class="chip act-gym">${ico('dumbbell')}Krafttraining</span>` : ''}</div>` : ''}
+    </article>`; }).join('')}
+    <button class="btn ghost wide rise tap" data-act="shuffle">${ico('shuffle')}Ab morgen neu mischen</button>
+  </div>` };
+}
+
+const RZ_CATS = [
+  ['f', 'Frühstück', 'miniporridge'], ['s', 'Jause', 'thunfischbrot'], ['a', 'Abendtopf', 'chili'],
+  ['veggie', 'Ohne Fleisch', 'kichererbsen'], ['schnell', 'Schnell', 'smoothie'], ['protein', 'High-Protein', 'ofenhendl']
+];
+function rzFilter(f) {
+  return Object.entries(DISHES).filter(([, d]) => f === 'alle' ? true : f === 'veggie' ? (d.protein === 'veggie' || (d.slot !== 'a' && !Object.keys(d.need).some(i => ING[i].cat === 'Fleisch & Fisch'))) : f === 'schnell' ? d.min <= 15 : f === 'protein' ? d.prot >= 35 : d.slot === f);
+}
+export function rezepte() {
+  const t = E.todayKey(), f = ui.rz || 'alle';
+  const recId = (S.plan[t] || {}).a || 'chili';
+  const popular = Object.keys(DISHES).filter(id => !E.isBlocked(id)).map(id => ({ id, s: (E.avgRating(id) ?? 3.5) + DISHES[id].prot / 40 })).sort((a, b) => b.s - a.s).slice(0, 8);
+  const list = rzFilter(f);
+  const rec = DISHES[recId];
+  return { html: `
+  <div class="page">
+    <div class="mesh m2" aria-hidden="true"></div>
+    <header class="top rise"><div><p class="kicker">${Object.keys(DISHES).length} Gerichte</p><h1 class="h1">Rezepte</h1></div></header>
+    ${planSeg('rezepte')}
+    <h2 class="sec rise">Empfohlen</h2>
+    <button class="rec-hero tap rise" data-go="#/dish/${recId}?d=${t}&s=a">${photo(recId, 'big')}<span class="ph-over"><small>Heute Abend</small><b>${esc(rec.name)}</b><span class="ph-meta">${ico('bolt', 'xs')}${fmtInt(rec.kcal)} kcal · ${ico('clock', 'xs')}${rec.min} Min · ${ico('muscle', 'xs')}${rec.prot} g</span></span></button>
+    <h2 class="sec rise">Kategorien</h2>
+    <div class="cats rise">${RZ_CATS.map(([v, l, id]) => `<button class="cat tap${f === v ? ' on' : ''}" data-act="rz-filter" data-v="${f === v ? 'alle' : v}">${photo(id, 'cat-ph')}<b>${l}</b></button>`).join('')}</div>
+    <h2 class="sec rise">Beliebt</h2>
+    <div class="hscroll rise">${popular.map(({ id }) => `<button class="pop tap" data-go="#/dish/${id}">${photo(id, 'pop-ph')}<b>${esc(DISHES[id].name)}</b><small>${fmtInt(DISHES[id].kcal)} kcal · ${DISHES[id].min} Min</small>${stars(E.avgRating(id))}</button>`).join('')}</div>
+    <div class="row-b rise"><h2 class="sec">${f === 'alle' ? 'Alle Rezepte' : (RZ_CATS.find(c => c[0] === f) || [0, 'Alle'])[1]}</h2>${f !== 'alle' ? '<button class="link tap" data-act="rz-filter" data-v="alle">Alle zeigen</button>' : ''}</div>
+    <div class="rz-list">${list.map(([id, d]) => `<button class="rz-row tap rise${E.isBlocked(id) ? ' blocked' : ''}" data-go="#/dish/${id}">${photo(id, 'row-ph')}<span><b>${esc(d.name)}</b><small>${d.min} Min · ${fmtInt(d.kcal)} kcal · ${d.prot} g Eiweiß</small><span class="pills sm">${dishTags(id).map(x => '<span class="pill">' + x + '</span>').join('')}</span></span>${ico('chev')}</button>`).join('')}</div>
+  </div>` };
 }
 
 /* =========================================================
@@ -183,61 +277,58 @@ export function dish(id, q) {
   const per = S.profile.persons;
   const fac = isPot ? (ui.amt === 'all' ? E.potFactor() : 1 / 6) : (ui.amt === 'all' ? per : 1);
   const why = k ? E.whyDish(id, k) : [];
-  const blocked = E.isBlocked(id);
-  const low = E.lowCount(id);
+  const blocked = E.isBlocked(id), low = E.lowCount(id);
   const ing = Object.entries(d.need).map(([ig, a]) => {
     const row = c.rows.find(r => r.ing === ig);
-    return `<li class="tap" data-go="#/ing/${ig}"><span class="q">${E.fmtAmount(ig, a * fac)}</span><span class="n">${esc(ING[ig].name)}${row.p.promo ? ' <span class="flag flag-promo">Aktion</span>' : ''}</span><span class="c">${row.p.src === 'bon' ? storeDot(row.p.store) : '≈'}${dec(row.cost * fac * (isPot ? 1 : 1))}</span></li>`;
+    return `<li class="tap" data-go="#/ing/${ig}"><span class="ie">${ING[ig].e || '•'}</span><span class="n">${esc(ING[ig].name)}${row.p.promo ? ' <span class="flag flag-promo">Aktion</span>' : ''}<small>${E.fmtAmount(ig, a * fac)}</small></span><span class="c">${row.p.src === 'bon' ? storeDot(row.p.store) : '≈'}${dec(row.cost * fac)} €</span></li>`;
   }).join('');
-  const hist = rs.slice(-8).map(r => `<span class="hdot" title="${r.d}">${r.st}★</span>`).join('');
+  const hist = rs.slice(-8).map(r => `<span class="hdot">${r.st}★</span>`).join('');
+  const kcalTot = d.prot * 4 + d.kh * 4 + d.fat * 9 || 1;
   return { html: `
-  <div class="page detail">
-    ${dhead(slotLabel[sl] || 'Gericht', k ? relDay(k) + ', ' + dLabel(k) : '')}
-    <section class="dish-hero rise" style="--h:${d.hue}">
-      <div class="dh-bg"></div>
-      <span class="dh-emo float">${d.emoji}</span>
-      <h1 class="dh-name">${esc(d.name)}</h1>
-      <div class="dh-chips">
-        <button class="chip tap" data-go="#/info/zeit">${ico('clock')}${d.min} Min</button>
-        <button class="chip tap" data-go="#/info/kcal">${ico('fire')}${fmtInt(d.kcal)} kcal</button>
-        <button class="chip tap" data-go="#/info/eiweiss">${ico('muscle')}${d.prot} g</button>
-        <button class="chip tap" data-go="#/info/kosten">${ico('euro')}${eur(c.portion)}</button>
+  <div class="page detail no-head">
+    <section class="d-hero">${photo(id, 'hero-ph')}<button class="iconbtn glass-btn tap" data-act="back" aria-label="Zurück">${ico('back')}</button>${avg >= 4 ? '<span class="heart">♥</span>' : ''}</section>
+    <section class="d-sheet">
+      <p class="kicker">${slotLabel[sl] || 'Gericht'}${k ? ' · ' + relDay(k) + ', ' + dLabel(k) : ''}</p>
+      <h1 class="d-name">${esc(d.name)}</h1>
+      <div class="stats3 lg"><button class="tap" data-go="#/info/kcal">${ico('bolt')}<b>${fmtInt(d.kcal)} kcal</b></button><button class="tap" data-go="#/info/zeit">${ico('clock')}<b>${d.min} Min</b></button><button class="tap" data-go="#/info/box">${ico('people')}<b>${isPot ? per * 2 + ' Portionen' : '1 Person'}</b></button></div>
+      <div class="pills">${dishTags(id).map(x => '<span class="pill">' + x + '</span>').join('')}</div>
+
+      <article class="card macro-card rise">
+        <button class="donut tap" data-go="#/info/makros" style="--a:${(d.kh * 4 / kcalTot * 360).toFixed(0)}deg;--b:${((d.kh * 4 + d.prot * 4) / kcalTot * 360).toFixed(0)}deg"><span><b>${fmtInt(d.kcal)}</b><small>kcal</small></span></button>
+        <ul class="mlegend"><li class="m-kh"><i></i>Kohlenhydrate <b>${d.kh} g</b></li><li class="m-prot"><i></i>Eiweiß <b>${d.prot} g</b></li><li class="m-fat"><i></i>Fett <b>${d.fat} g</b></li><li class="cost"><i></i>Kosten <b>${eur(c.portion)}</b></li></ul>
+        <p class="fine full">${isPot ? 'pro Portion' : 'pro Person'} · ${Math.round(d.kcal / E.targets().kcal * 100)} % deines Tagesbedarfs</p>
+      </article>
+
+      ${blocked ? `<article class="card warn rise">${ico('ban')}<div><b>Vorerst aussortiert</b><p>Du hast es ${low}× unter 3 Sterne bewertet – darum plant die App automatisch was anderes ein.</p><button class="btn sm tap" data-act="unblock" data-id="${id}">Doch wieder einplanen</button></div></article>` : ''}
+      ${why.length ? `<article class="card rise"><h3 class="c-h">${ico('spark', 'xs')} Warum ${k === E.todayKey() ? 'heute' : 'an dem Tag'}?</h3><ul class="facts">${why.map(w => '<li>' + esc(w) + '</li>').join('')}</ul></article>` : ''}
+
+      <article class="card rise">
+        <div class="row-b"><h3 class="c-h">${ico('star', 'xs')} Bewertung</h3><button class="link tap" data-go="#/info/sterne">Wie funktioniert das?</button></div>
+        <div class="rate-big"><div class="rb-avg"><b>${avg != null ? dec(avg, 1) : '–'}</b>${stars(avg)}<small>${rs.length ? rs.length + '× bewertet' : 'noch nicht bewertet'}</small></div>
+          ${k ? `<div class="rb-now"><small>${relDay(k)}:</small><div class="stars-row" data-id="${id}" data-k="${k}" data-slot="${sl}">${starRow(E.ratingOf(id, k, sl))}</div></div>` : ''}</div>
+        ${hist ? '<div class="hist">' + hist + '</div>' : ''}
+        ${low === 1 && !blocked ? '<p class="fine">1× unter 3 Sternen – noch einmal, dann kommt es automatisch nicht mehr.</p>' : ''}
+      </article>
+
+      <article class="card rise">
+        <div class="row-b"><h3 class="c-h">${ico('cart', 'xs')} Zutaten</h3><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">${isPot ? '1 Portion' : '1 Person'}</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">${isPot ? 'Topf' : 'für ' + per}</button></div></div>
+        <ul class="ing">${ing}</ul>
+        ${d.extra ? '<p class="fine">Dazu: ' + esc(d.extra) + '</p>' : ''}
+        <div class="cost-sum"><span>Kosten ${isPot ? (ui.amt === 'all' ? 'Topf' : 'Portion') : (ui.amt === 'all' ? 'für ' + per : 'pro Person')}</span><b>${eur(c.total * fac)}</b></div>
+        <p class="fine">${c.learnedShare > 0 ? Math.round(c.learnedShare * 100) + ' % der Preise von deinen Kassenbons' : '≈ geschätzte Preise – scanne Bons, dann wird’s genau'}</p>
+      </article>
+
+      <article class="card rise">
+        <h3 class="c-h">${ico('pot', 'xs')} Zubereitung <small class="hint">tippen zum Abhaken</small></h3>
+        <ol class="steps">${d.steps.map((s, i) => `<li class="tap" data-act="step"><span class="st-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('')}</ol>
+        <p class="tip">💡 ${esc(d.tip)}</p>
+      </article>
+
+      <div class="actions-row rise">
+        ${k && S.plan[k] && (sl !== 'm' || !S.plan[k].mBox) ? `<button class="btn ghost tap" data-act="reroll" data-slot="${sl}" data-k="${k}" data-back="1">${ico('shuffle')}Anderes Gericht</button>` : ''}
+        ${!blocked ? `<button class="btn ghost tap" data-act="block" data-id="${id}">${ico('ban')}Nie mehr</button>` : ''}
       </div>
-      <p class="dh-sub">${isPot ? 'pro Portion · 1 Topf = ' + per * 2 + ' Portionen' : 'pro Person'}</p>
     </section>
-
-    ${blocked ? `<article class="card warn rise">${ico('ban')}<div><b>Vorerst aussortiert</b><p>Du hast es ${low}× unter 3 Sterne bewertet – darum plant die App automatisch was anderes ein.</p><button class="btn sm tap" data-act="unblock" data-id="${id}">Doch wieder einplanen</button></div></article>` : ''}
-
-    ${why.length ? `<article class="card rise"><h3 class="c-t">${ico('spark')}Warum ${k === E.todayKey() ? 'heute' : 'an dem Tag'}?</h3><ul class="facts">${why.map(w => '<li>' + esc(w) + '</li>').join('')}</ul></article>` : ''}
-
-    <article class="card rise">
-      <div class="row-b"><h3 class="c-t">${ico('star')}Deine Bewertung</h3><button class="link tap" data-go="#/info/sterne">Wie funktioniert das?</button></div>
-      <div class="rate-big">
-        <div class="rb-avg"><b>${avg != null ? dec(avg, 1) : '–'}</b>${stars(avg)}<small>${rs.length ? rs.length + '× bewertet' : 'noch nicht bewertet'}</small></div>
-        ${k ? `<div class="rb-now"><small>${relDay(k)}:</small><div class="stars-row" data-id="${id}" data-k="${k}" data-slot="${sl}">${starRow(E.ratingOf(id, k, sl))}</div></div>` : ''}
-      </div>
-      ${hist ? '<div class="hist">' + hist + '</div>' : ''}
-      ${low === 1 && !blocked ? '<p class="fine">1× unter 3 Sternen – noch einmal, dann kommt es automatisch nicht mehr.</p>' : ''}
-    </article>
-
-    <article class="card rise">
-      <div class="row-b"><h3 class="c-t">${ico('cart')}Zutaten</h3><div class="seg"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">${isPot ? '1 Portion' : '1 Person'}</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">${isPot ? 'ganzer Topf' : 'für ' + per}</button></div></div>
-      <ul class="ing">${ing}</ul>
-      ${d.extra ? '<p class="fine">Dazu: ' + esc(d.extra) + '</p>' : ''}
-      <div class="cost-sum"><span>Kosten ${isPot ? (ui.amt === 'all' ? 'Topf' : 'Portion') : (ui.amt === 'all' ? 'für ' + per : 'pro Person')}</span><b>${eur((isPot ? c.total : c.portion) * fac)}</b></div>
-      <p class="fine">${c.learnedShare > 0 ? Math.round(c.learnedShare * 100) + ' % der Preise von deinen Kassenbons' : '≈ geschätzte Preise – scanne Bons, dann wird’s genau'} · tippe auf eine Zutat für Details</p>
-    </article>
-
-    <article class="card rise">
-      <h3 class="c-t">${ico('pot')}So geht’s <small class="hint">tippen zum Abhaken</small></h3>
-      <ol class="steps">${d.steps.map((s, i) => `<li class="tap" data-act="step"><span class="st-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('')}</ol>
-      <p class="tip"><b>Tipp:</b> ${esc(d.tip)}</p>
-    </article>
-
-    <div class="actions-row rise">
-      ${k && S.plan[k] && (sl !== 'm' || !S.plan[k].mBox) ? `<button class="btn ghost tap" data-act="reroll" data-slot="${sl}" data-k="${k}" data-back="1">${ico('shuffle')}Anderes Gericht</button>` : ''}
-      ${!blocked ? `<button class="btn ghost tap" data-act="block" data-id="${id}">${ico('ban')}Nie mehr planen</button>` : ''}
-    </div>
   </div>` };
 }
 export function starRow(v) {
@@ -245,8 +336,6 @@ export function starRow(v) {
   for (let i = 1; i <= 5; i++) h += `<button class="star tap${v != null && v >= i ? ' on' : ''}" data-act="star" data-v="${i}" aria-label="${i} Sterne">★</button>`;
   return h;
 }
-
-/* Bewertungs-Sheet (aus Benachrichtigung oder Heute) */
 export function rateSheetHTML(k) {
   const p = S.plan[k]; if (!p) return '<p>Kein Plan für diesen Tag.</p>';
   const L = S.log[k] || {};
@@ -254,162 +343,290 @@ export function rateSheetHTML(k) {
   <p class="sh-sub">0–5 Sterne. Bekommt ein Gericht öfter unter 3, plant die App automatisch was anderes.</p>
   <label class="switch-row tap"><span>${ico('pot')}Gekocht</span><input type="checkbox" data-act="cooked-cb" data-k="${k}"${L.cooked ? ' checked' : ''}><i class="sw"></i></label>
   ${['a', 'm', 'f', 's'].map(sl => { const d = DISHES[p[sl]]; if (!d) return ''; const eaten = L.eaten && L.eaten[sl]; return `
-  <div class="rate-item">
-    ${emo(d, 'sm')}
+  <div class="rate-item">${plate(p[sl], eaten ? 1 : 0, 'sm')}
     <div class="ri-b"><small>${slotLabel[sl]}${sl === 'm' && p.mBox ? ' · Box' : ''}</small><b>${esc(d.name)}</b>
       <div class="stars-row" data-id="${p[sl]}" data-k="${k}" data-slot="${sl}">${starRow(E.ratingOf(p[sl], k, sl))}</div></div>
-    <button class="eat tap${eaten ? ' on' : ''}" data-act="eat" data-k="${k}" data-slot="${sl}" aria-label="gegessen">${ico('check')}</button>
+    <button class="ml-add tap${eaten ? ' on' : ''}" data-act="eat" data-k="${k}" data-slot="${sl}" aria-label="gegessen">${ico('check')}</button>
   </div>`; }).join('')}
   <button class="btn wide tap" data-close>Fertig</button>`;
 }
 
 /* =========================================================
-   INFO-SEITEN – „tippen und genauer erklärt bekommen“
+   TRAINING – Laufen & Mini-Workouts
+   ========================================================= */
+function zoneBar(blocks) {
+  const tot = blocks.reduce((s, b) => s + b.sec, 0);
+  return `<div class="zbar">${blocks.map(b => `<i style="flex:${b.sec};--c:${SP.ZONES[b.z].c};--hh:${10 + b.z * 9}px" title="${esc(b.label)}"></i>`).join('')}</div><div class="zbar-l"><span>0′</span><span>${Math.round(tot / 120)}′</span><span>${Math.round(tot / 60)}′</span></div>`;
+}
+function weekRow(k, t) {
+  const a = SP.plannedActivity(k), gym = !a && E.isTrain(k), past = k < t;
+  return `<button class="wr tap${k === t ? ' today' : ''}" ${a ? `data-go="${a.kind === 'run' ? '#/run/' + k : '#/workout/' + a.id + '?d=' + k}"` : ''}><span class="wr-d"><small>${DS[E.wd(k)]}</small><b>${E.dateOf(k).getDate()}</b></span>
+    <span class="wr-t">${a ? (a.kind === 'run' ? `<b>${esc(a.session.name)}</b><small>${a.min} Min · Z${a.session.zone} · ≈ ${lit(a.session.km)} km</small>` : `<b>${SP.WORKOUTS[a.id].emoji} ${esc(SP.WORKOUTS[a.id].name)}</b><small>Mini-Workout statt Lauf · ${a.min} Min</small>`) : gym ? '<b>Krafttraining</b><small>dein Trainingstag</small>' : '<b class="mute">Ruhetag</b><small>Regeneration ist Training</small>'}</span>
+    <span class="wr-s">${a ? (a.done ? '<i class="st ok">' + ico('check') + '</i>' : past ? '<i class="st miss">–</i>' : '<i class="st plan">' + ico(a.kind === 'run' ? 'run' : 'dumbbell') + '</i>') : ''}</span></button>`;
+}
+export function training() {
+  const t = E.todayKey(), P = S.profile;
+  const act = SP.plannedActivity(t);
+  const mon = E.addDays(t, -E.wd(t));
+  const ws = SP.weekStats(mon), st = SP.streak();
+  let nextRun = null; for (let i = 1; i <= 7; i++) { const k = E.addDays(t, i); if (SP.isRunDay(k)) { nextRun = k; break; } }
+  let today;
+  if (act && act.kind === 'run') {
+    const r = act.session;
+    today = `<article class="card run-card rise">
+      <div class="rc-top"><span class="rc-emo">${r.emoji}</span><div><p class="kicker">Heute · ${P.runTime} · Woche ${r.week}</p><h2>${esc(r.name)}</h2></div>${act.done ? '<span class="badge ok">✓ erledigt</span>' : ''}</div>
+      <div class="stats3"><span>${ico('clock')}<b>${r.min} Min</b></span><span>${ico('run')}<b>≈ ${lit(r.km)} km</b></span><span>${ico('fire')}<b>≈ ${r.kcal} kcal</b></span></div>
+      <button class="tap zwrap" data-go="#/run/${t}">${zoneBar(r.blocks)}</button>
+      <p class="rc-desc">${esc(r.desc)}</p>
+      ${act.done ? `<button class="btn ghost wide tap" data-act="act-undo" data-k="${t}">Rückgängig</button>` : `
+      <div class="rc-btns"><button class="btn big tap" data-go="#/timer/run/${t}">${ico('play')}Lauf starten</button><button class="btn ghost tap" data-act="run-done" data-k="${t}">${ico('check')}Gelaufen</button></div>
+      <button class="nope tap" data-act="no-run" data-k="${t}">😮‍💨 Keine Lust zu laufen? <b>Dann Mini-Workout</b></button>`}
+    </article>`;
+  } else if (act && act.kind === 'workout') {
+    const w = SP.WORKOUTS[act.id];
+    today = `<article class="card run-card wo rise" style="--h:${w.hue}">
+      <div class="rc-top"><span class="rc-emo">${w.emoji}</span><div><p class="kicker">Heute statt Laufen</p><h2>${esc(w.name)}</h2></div>${act.done ? '<span class="badge ok">✓ erledigt</span>' : ''}</div>
+      <div class="stats3"><span>${ico('clock')}<b>${act.min} Min</b></span><span>${ico('dumbbell')}<b>${w.ex.length} Übungen</b></span><span>${ico('fire')}<b>≈ ${act.kcal} kcal</b></span></div>
+      <p class="rc-desc">${esc(w.desc)} Kein Laufen heißt nicht nix tun – ${act.min} Minuten, ohne Geräte, der Timer sagt dir alles an.</p>
+      ${act.done ? `<button class="btn ghost wide tap" data-act="act-undo" data-k="${t}">Rückgängig</button>` : `
+      <div class="rc-btns"><button class="btn big tap" data-go="#/timer/workout/${act.id}?d=${t}">${ico('play')}Workout starten</button><button class="btn ghost tap" data-go="#/workout/${act.id}?d=${t}">${ico('book')}Übungen</button></div>
+      <button class="nope tap" data-act="act-undo" data-k="${t}">Doch lieber laufen? <b>Zurück zum Lauf</b></button>`}
+    </article>`;
+  } else {
+    const nr = nextRun ? SP.runSession(nextRun) : null;
+    today = `<article class="card run-card rest rise"><div class="rc-top"><span class="rc-emo">${E.isTrain(t) ? '🏋️' : '🧘'}</span><div><p class="kicker">Heute</p><h2>${E.isTrain(t) ? 'Krafttraining-Tag' : 'Kein Lauf geplant'}</h2></div></div>
+      <p class="rc-desc">${nr ? 'Nächster Lauf: ' + relDay(nextRun) + ' um ' + P.runTime + ' – ' + esc(nr.name) + ' (' + nr.min + ' Min).' : 'Stell unten deine Lauftage ein.'} Lust auf mehr? Ein Mini-Workout geht immer.</p>
+      <button class="btn ghost wide tap" data-go="#/workout/${SP.workoutFor(t)}?d=${t}">${ico('dumbbell')}Freiwilliges Mini-Workout</button></article>`;
+  }
+  const rows = []; for (let i = 0; i < 7; i++) rows.push(weekRow(E.addDays(mon, i), t));
+  return { html: `
+  <div class="page">
+    <div class="mesh m3" aria-hidden="true"></div>
+    <header class="top rise"><div><p class="kicker">Laufen & Workouts</p><h1 class="h1">Training</h1></div><button class="iconbtn tap" data-go="#/profile" aria-label="Einstellungen">${ico('edit')}</button></header>
+    <div class="tstats rise">
+      <button class="ts tap" data-go="#/info/laufen"><span>🔥</span><b>${st}</b><small>Serie</small></button>
+      <button class="ts tap" data-go="#/info/laufen"><span>🏃</span><b>${ws.done}/${ws.planned}</b><small>Woche</small></button>
+      <button class="ts tap" data-go="#/info/laufen"><span>📍</span><b>${lit(ws.km)}</b><small>km</small></button>
+      <button class="ts tap" data-go="#/info/verbrannt"><span>⚡</span><b>${fmtInt(ws.kcal)}</b><small>kcal</small></button>
+    </div>
+    ${today}
+    <h2 class="sec rise">Diese Woche</h2>
+    <article class="card wrows rise">${rows.join('')}</article>
+    <h2 class="sec rise">Mini-Workouts <small>· ohne Geräte</small></h2>
+    <div class="wo-grid rise">${Object.entries(SP.WORKOUTS).map(([id, w]) => `<button class="wo-card tap" style="--h:${w.hue}" data-go="#/workout/${id}"><span class="wo-e">${w.emoji}</span><b>${esc(w.name)}</b><small>${SP.workoutMinutes(id)} Min · ${w.focus}</small></button>`).join('')}</div>
+    <div class="list rise">
+      <button class="list-row tap" data-go="#/profile"><span class="lr-ico">${ico('week')}</span><span><b>Lauftage & Niveau</b><small>${(P.run || []).map(i => DS[i]).join(', ') || 'keine'} · ${P.runTime} · ${SP.LEVELS[P.runLevel || 'einsteiger'].name}</small></span>${ico('chev')}</button>
+      <button class="list-row tap" data-go="#/info/zonen"><span class="lr-ico">${ico('heart')}</span><span><b>Pulszonen erklärt</b><small>Wie schnell ist „locker“?</small></span>${ico('chev')}</button>
+    </div>
+  </div>` };
+}
+
+export function runDetail(k) {
+  if (!SP.isRunDay(k)) return { html: `<div class="page detail">${dhead('Lauf')}<p class="empty">An diesem Tag ist kein Lauf geplant.</p></div>` };
+  const r = SP.runSession(k), a = SP.actOf(k), done = a && a.done && a.type === 'run';
+  const list = []; let tsum = 0;
+  r.blocks.forEach(b => { list.push(`<li><span class="bl-t">${Math.floor(tsum / 60)}′</span><i style="--c:${SP.ZONES[b.z].c}"></i><span class="bl-l"><b>${esc(b.label)}</b><small>${b.sec >= 60 ? lit(Math.round(b.sec / 6) / 10) + ' Min' : b.sec + ' s'} · ${SP.ZONES[b.z].name}</small></span></li>`); tsum += b.sec; });
+  const wid = SP.workoutFor(k);
+  return { html: `
+  <div class="page detail">
+    ${dhead('Lauf', relDay(k) + ', ' + dLabel(k))}
+    <section class="info-hero rise" style="--h:25"><span class="ih-emo float">${r.emoji}</span><h1>${esc(r.name)}</h1><p>${SP.LEVELS[r.level].name} · Woche ${r.week} · ${S.profile.runTime}</p></section>
+    <div class="stats3 lg rise"><span>${ico('clock')}<b>${r.min} Min</b></span><span>${ico('run')}<b>≈ ${lit(r.km)} km</b></span><span>${ico('fire')}<b>≈ ${r.kcal} kcal</b></span></div>
+    <article class="card rise"><h3 class="c-h">Ablauf</h3>${zoneBar(r.blocks)}<p class="lede">${esc(r.desc)}</p><ol class="blocks">${list.join('')}</ol></article>
+    <article class="card rise"><h3 class="c-h">${ico('heart', 'xs')} So fühlt sich das an</h3><ul class="facts">${[...new Set(r.blocks.map(b => b.z))].sort().map(z => `<li><b style="color:${SP.ZONES[z].c}">${SP.ZONES[z].name}:</b> ${SP.ZONES[z].txt}</li>`).join('')}</ul></article>
+    <article class="card rise"><h3 class="c-h">Tipps</h3><ul class="facts"><li>0,3–0,5 L Wasser 1–2 h vorher, danach nachtrinken.</li><li>Nicht mit vollem Bauch – 2 h nach dem Essen ist ideal, sonst eine Banane vorher.</li><li>Lieber zu langsam als zu schnell: Wenn du nicht mehr reden kannst, Tempo raus.</li><li>Seitenstechen? Gehen, tief ausatmen, dann weiter.</li><li>Danach: Mahlzeit mit Eiweiß innerhalb von 2 h.</li></ul></article>
+    ${done ? `<article class="card ok-card rise">${ico('check')}<div><b>Erledigt</b><p>${a.km ? lit(a.km) + ' km · ' : ''}${a.min} Min · ${a.kcal} kcal</p><button class="btn sm ghost tap" data-act="act-undo" data-k="${k}">Rückgängig</button></div></article>` : `
+    <div class="rc-btns rise"><button class="btn big tap" data-go="#/timer/run/${k}">${ico('play')}Lauf starten</button><button class="btn ghost tap" data-act="run-done" data-k="${k}">${ico('check')}Gelaufen</button></div>
+    <button class="nope tap rise" data-act="no-run" data-k="${k}">😮‍💨 Keine Lust? <b>Dann ${esc(SP.WORKOUTS[wid].name)} (${SP.workoutMinutes(wid)} Min)</b></button>`}
+  </div>` };
+}
+
+export function workoutDetail(id, q) {
+  const w = SP.WORKOUTS[id]; if (!w) return notFound();
+  const k = q.d || null;
+  const a = k ? SP.actOf(k) : null, done = a && a.done && a.type === 'workout' && a.workout === id;
+  return { html: `
+  <div class="page detail">
+    ${dhead('Mini-Workout', k ? relDay(k) : 'ohne Geräte')}
+    <section class="info-hero rise" style="--h:${w.hue}"><span class="ih-emo float">${w.emoji}</span><h1>${esc(w.name)}</h1><p>${esc(w.desc)}</p></section>
+    <div class="stats3 lg rise"><span>${ico('clock')}<b>${SP.workoutMinutes(id)} Min</b></span><span>${ico('dumbbell')}<b>${w.rounds} Runden</b></span><span>${ico('fire')}<b>≈ ${SP.workoutKcal(id)} kcal</b></span></div>
+    <article class="card rise"><h3 class="c-h">So geht’s</h3><p class="lede">${w.rounds} Runden mit je ${w.ex.length} Übungen: <b>${w.work} s Übung</b>, <b>${w.rest} s Pause</b>. Der Timer sagt dir alles an – Handy hinlegen, mitmachen. Tippe auf eine Übung für die Anleitung.</p></article>
+    <div class="ex-list">${w.ex.map((e, i) => { const x = SP.EX[e]; return `
+      <details class="card ex rise"><summary class="tap"><span class="ex-n">${i + 1}</span><span class="ex-e">${x.emoji}</span><span class="ex-t"><b>${esc(x.name)}</b><small>${w.work} s · tippen für Anleitung</small></span>${ico('chev', 'ex-c')}</summary>
+        <ol class="steps sm">${x.how.map((s, j) => `<li><span class="st-n">${j + 1}</span><span>${esc(s)}</span></li>`).join('')}</ol>
+        <p class="tip">🪶 <b>Leichter:</b> ${esc(x.easy)}</p></details>`; }).join('')}</div>
+    ${done ? `<article class="card ok-card rise">${ico('check')}<div><b>Erledigt</b><p>${a.min} Min · ${a.kcal} kcal</p></div></article>` : `
+    <div class="sticky-save"><button class="btn big tap" data-go="#/timer/workout/${id}${k ? '?d=' + k : ''}">${ico('play')}Workout starten</button><button class="btn ghost tap" data-act="wo-done" data-id="${id}" data-k="${k || E.todayKey()}">${ico('check')}Erledigt</button></div>`}
+  </div>` };
+}
+
+/* Timer-Bildschirm (Lauf oder Workout) – der Inhalt wird live von main.js aktualisiert */
+export function timerScreen() {
+  const T = ui.timer;
+  if (!T) return { html: `<div class="page detail">${dhead('Timer')}<p class="empty">Kein Training aktiv.</p></div>` };
+  return { html: `
+  <div class="page timer" style="--h:${T.hue}">
+    <div class="tm-bg"></div>
+    <header class="tm-top"><button class="iconbtn glass-btn tap" data-act="timer-stop" aria-label="Beenden">${ico('close')}</button><div><small>${esc(T.title)}</small><b id="tm-step">1 / ${T.seq.length}</b></div><span class="tm-total" id="tm-total">0:00</span></header>
+    <div class="tm-prog"><i id="tm-prog"></i></div>
+    <div class="tm-main">
+      <div class="tm-ring">${ring(0, 260, 16, 'tm-r')}<div class="tm-c"><span class="tm-e" id="tm-e">${T.emoji}</span><b id="tm-sec">0:00</b><small id="tm-phase">Bereit</small></div></div>
+      <h2 id="tm-label">…</h2>
+      <ol id="tm-how" class="tm-how"></ol>
+    </div>
+    <div class="tm-next" id="tm-next"></div>
+    <div class="tm-ctrl"><button class="iconbtn big glass-btn tap" data-act="timer-prev" aria-label="Zurück">${ico('prev')}</button><button class="play-btn tap" data-act="timer-toggle" aria-label="Pause"><span id="tm-pp">${ico('pause')}</span></button><button class="iconbtn big glass-btn tap" data-act="timer-skip" aria-label="Weiter">${ico('next')}</button></div>
+  </div>`, cls: 'timer-screen', mount: () => window.dispatchEvent(new Event('timer-mount')) };
+}
+
+/* =========================================================
+   INFO-SEITEN
    ========================================================= */
 export function info(topic) {
   const T = E.targets(), P = S.profile, t = E.todayKey(), k = ui.day || t;
   const tot = E.dayTotals(k), p = S.plan[k];
-  const G = (title, emoji, hue, body) => ({ html: `<div class="page detail">${dhead('Erklärt', '')}<section class="info-hero rise" style="--h:${hue}"><span class="ih-emo float">${emoji}</span><h1>${title}</h1></section>${body}</div>` });
-  const mealsBars = (field, unit, target) => p ? `<article class="card rise"><h3 class="c-t">${relDay(k)} – pro Mahlzeit</h3>${['f', 'm', 's', 'a'].map(sl => { const d = DISHES[p[sl]]; const v = field === 'eur' ? E.dishCost(p[sl]).portion : d[field]; const max = field === 'eur' ? 2.5 : field === 'kcal' ? 1100 : 50; return `<button class="bar-row tap" data-go="#/dish/${p[sl]}?d=${k}&s=${sl}"><span class="br-l">${d.emoji} ${slotLabel[sl]}</span><span class="br-t"><i data-w="${pct(v, max)}"></i></span><b>${field === 'eur' ? eur(v) : fmtInt(v) + unit}</b></button>`; }).join('')}
+  const G = (title, emoji, hue, body) => ({ html: `<div class="page detail">${dhead('Erklärt')}<section class="info-hero rise" style="--h:${hue}"><span class="ih-emo float">${emoji}</span><h1>${title}</h1></section>${body}</div>` });
+  const mealsBars = (field, unit, target) => p ? `<article class="card rise"><h3 class="c-h">${relDay(k)} – pro Mahlzeit</h3>${['f', 'm', 's', 'a'].map(sl => { const d = DISHES[p[sl]]; const v = field === 'eur' ? E.dishCost(p[sl]).portion : d[field]; const max = field === 'eur' ? 2.5 : field === 'kcal' ? 1100 : 50; return `<button class="bar-row tap" data-go="#/dish/${p[sl]}?d=${k}&s=${sl}"><span class="br-l">${d.emoji} ${slotLabel[sl]}</span><span class="br-t"><i data-w="${pct(v, max)}"></i></span><b>${field === 'eur' ? eur(v) : fmtInt(v) + unit}</b></button>`; }).join('')}
       <div class="cost-sum"><span>Summe</span><b>${field === 'eur' ? eur(tot.eur) : fmtInt(tot[field]) + unit}${target ? ' / ' + fmtInt(target) + unit : ''}</b></div></article>` : '';
-
   switch (topic) {
     case 'kcal': {
-      const diff = T.kcal - tot.kcal;
+      const diff = T.kcal + SP.burned(k) - tot.kcal;
       return G('Kalorien', '🔥', 18, `
-      <article class="card rise"><p class="lede">Kalorien (kcal) sind die Energie aus dem Essen. Dein Körper braucht sie fürs Leben, Bewegen und – bei deinem Ziel – zum Aufbauen von Muskeln.</p>
-        <div class="big-num"><b data-count="${T.kcal}">0</b><span>kcal pro Tag – dein Ziel</span></div></article>
-      <article class="card rise"><h3 class="c-t">So wird gerechnet</h3>
+      <article class="card rise"><p class="lede">Die Anzeige auf „Heute“ zeigt: <b>Gegessen</b> (abgehakte Mahlzeiten), <b>Übrig</b> (Ziel + Verbranntes − Gegessenes) und <b>Verbrannt</b> (Lauf oder Workout).</p>
+        <div class="big-num"><b data-count="${T.kcal}">0</b><span>kcal pro Tag – dein Ziel (ohne Laufen)</span></div></article>
+      <article class="card rise"><h3 class="c-h">So wird gerechnet</h3>
         <div class="calc">
           <div><span>Grundumsatz</span><small>10 × ${P.weight} kg + 6,25 × ${P.height} cm − 5 × ${P.age || '25*'} J. ${P.sex === 'w' ? '− 161' : P.sex === 'm' ? '+ 5' : '− 78'}</small><b>${fmtInt(T.bmr)}</b></div>
-          <div><span>× Aktivität</span><small>${(P.train || []).length} Trainingstage pro Woche</small><b>× ${dec(T.pal, 2)}</b></div>
+          <div><span>× Aktivität</span><small>${(P.train || []).length} Krafttrainings-Tage pro Woche</small><b>× ${dec(T.pal, 2)}</b></div>
           <div><span>= Verbrauch</span><small>was du am Tag ungefähr verbrennst</small><b>${fmtInt(T.tdee)}</b></div>
           <div><span>${T.goal.add >= 0 ? '+' : '−'} Ziel: ${T.goal.name}</span><small>${esc(T.goal.desc)}</small><b>${T.goal.add >= 0 ? '+' : '−'} ${Math.abs(T.goal.add)}</b></div>
           <div class="calc-sum"><span>Dein Tagesziel</span><b>${fmtInt(T.kcal)} kcal</b></div>
+          <div><span>+ Laufen / Workout</span><small>kommt an dem Tag dazu, an dem du es machst</small><b>+ ${SP.burned(k)}</b></div>
         </div>
-        ${T.estimatedAge || T.estimatedSex ? `<p class="fine">* ${T.estimatedAge ? 'Alter' : ''}${T.estimatedAge && T.estimatedSex ? ' und ' : ''}${T.estimatedSex ? 'Geschlecht' : ''} geschätzt – <button class="link tap" data-go="#/profile">im Profil eintragen</button> für genauere Werte.</p>` : ''}
+        ${T.estimatedAge || T.estimatedSex ? `<p class="fine">* ${T.estimatedAge ? 'Alter' : ''}${T.estimatedAge && T.estimatedSex ? ' und ' : ''}${T.estimatedSex ? 'Geschlecht' : ''} geschätzt – <button class="link tap" data-go="#/profile">im Profil eintragen</button>.</p>` : ''}
       </article>
       ${mealsBars('kcal', ' kcal', T.kcal)}
-      <article class="card rise"><h3 class="c-t">${diff > 150 ? 'Dir fehlen heute ≈ ' + fmtInt(diff) + ' kcal' : diff < -250 ? 'Heute etwas über dem Ziel' : 'Passt ziemlich genau'}</h3>
-        <ul class="facts">${diff > 150 ? '<li>+ 1 großes Glas Milch (0,3 L) ≈ +190 kcal</li><li>+ 1 Banane ≈ +110 kcal</li><li>+ 1 EL Erdnussbutter aufs Brot ≈ +90 kcal</li><li>Beim Abendessen einfach etwas mehr Reis/Nudeln nehmen</li>' : diff < -250 ? '<li>Kein Stress – über die Woche gleicht sich das aus.</li><li>Bei der Jause eine kleinere Portion nehmen.</li>' : '<li>Weiter so – genau so baust du langsam und sauber auf.</li>'}
-        <li>In der Früh bewusst wenig – der Rest ist auf Mittag, Jause und Abend verteilt.</li></ul></article>`);
+      <article class="card rise"><h3 class="c-h">${diff > 150 ? 'Laut Plan fehlen ≈ ' + fmtInt(diff) + ' kcal' : diff < -250 ? 'Plan liegt über dem Ziel' : 'Plan passt'}</h3>
+        <ul class="facts">${diff > 150 ? '<li>+ 1 großes Glas Milch (0,3 L) ≈ +190 kcal</li><li>+ 1 Banane ≈ +110 kcal</li><li>+ 1 EL Erdnussbutter ≈ +90 kcal</li><li>Abends etwas mehr Reis/Nudeln nehmen</li>' : '<li>Weiter so – genau so baust du langsam und sauber auf.</li>'}<li>In der Früh bewusst wenig – der Rest ist auf Mittag, Jause und Abend verteilt.</li></ul></article>`);
     }
+    case 'makros':
+      return G('Makros', '🥗', 140, `
+      <article class="card rise"><p class="lede">Makronährstoffe sind die drei Energielieferanten: <b>Kohlenhydrate</b> (Treibstoff fürs Training und Laufen), <b>Eiweiß</b> (Baustoff für Muskeln) und <b>Fett</b> (Hormone, Vitamine).</p></article>
+      <article class="card rise"><h3 class="c-h">Deine Ziele pro Tag</h3><div class="calc">
+        <div class="m-kh"><span><i class="lg"></i>Kohlenhydrate</span><small>der Rest der Energie · 4 kcal/g</small><b>${T.kh} g</b></div>
+        <div class="m-prot"><span><i class="lg"></i>Eiweiß</span><small>${dec(T.goal.protein, 1)} g × ${P.weight} kg · 4 kcal/g</small><b>${T.prot} g</b></div>
+        <div class="m-fat"><span><i class="lg"></i>Fett</span><small>≈ 28 % der Kalorien · 9 kcal/g</small><b>${T.fat} g</b></div></div>
+        <p class="fine">Die Balken auf „Heute“ füllen sich, wenn du Mahlzeiten abhakst. Der blasse Teil zeigt, was laut Plan heute insgesamt kommt.</p></article>
+      ${mealsBars('prot', ' g', T.prot)}`);
     case 'eiweiss':
       return G('Eiweiß', '💪', 150, `
-      <article class="card rise"><p class="lede">Eiweiß (Protein) ist der Baustoff für deine Muskeln. Ohne genug Eiweiß bringt auch das beste Training wenig.</p>
+      <article class="card rise"><p class="lede">Eiweiß ist der Baustoff für deine Muskeln. Ohne genug Eiweiß bringt auch das beste Training wenig.</p>
         <div class="big-num"><b data-count="${T.prot}" data-suf=" g">0</b><span>pro Tag = ${dec(T.goal.protein, 1)} g × ${P.weight} kg</span></div></article>
       ${mealsBars('prot', ' g', T.prot)}
-      <article class="card rise"><h3 class="c-t">Gute, billige Eiweiß-Quellen</h3><ul class="facts">
-        <li><b>Magertopfen</b> – 250 g ≈ 30 g Eiweiß für ≈ 1 €</li><li><b>Eier</b> – 1 Ei ≈ 6,5 g</li><li><b>Rote Linsen</b> – 100 g trocken ≈ 24 g</li><li><b>Thunfisch natur</b> – 1 Dose ≈ 19 g</li><li><b>Milch</b> – 0,5 L ≈ 17 g</li><li><b>Hendl/Pute</b> – 100 g ≈ 23 g</li></ul>
-        <p class="fine">Verteilt über den Tag ist besser als alles auf einmal: jede Mahlzeit 20–40 g.</p></article>`);
-    case 'kosten': {
-      const wk = []; for (let i = 0; i < 7; i++) wk.push(E.dayTotals(E.addDays(t, i)).eur);
-      const sum = wk.reduce((s, x) => s + x, 0);
-      const nb = S.receipts.length;
-      return G('Kosten', '💶', 48, `
-      <article class="card rise"><p class="lede">Alle Preise sind <b>pro Person</b>. Gerechnet wird mit dem ${S.profile.priceMode === 'cheapest' ? 'günstigsten Markt, den die App von deinen Bons kennt' : 'Stamm-Markt ' + storeName(S.profile.priceMode)} – und wo noch kein Bon da ist, mit geschätzten Diskont-Preisen (≈).</p>
-        <div class="big-num"><b data-count="${sum}" data-dec="2" data-suf=" €">0</b><span>pro Person für die nächsten 7 Tage · alle ${S.profile.persons}: ${eur(sum * S.profile.persons)}</span></div></article>
-      ${mealsBars('eur', '', 0)}
-      <article class="card rise"><h3 class="c-t">Wie die App Preise lernt</h3><ul class="facts">
-        <li>Du fotografierst den Kassenbon → die App liest jede Zeile.</li><li>Artikel werden Zutaten zugeordnet (z. B. „S-BUDGET VOLLMILCH“ → Milch).</li><li>Rabatte und „Aktion −25 %“ werden erkannt und gemerkt.</li><li>Pro Markt entsteht ein Normalpreis – und die App erkennt, wie oft etwas in Aktion ist.</li></ul>
-        <p class="fine">${nb ? nb + ' Bon' + (nb > 1 ? 's' : '') + ' gescannt.' : 'Noch kein Bon gescannt.'}</p>
-        <button class="btn tap" data-go="#/bon">${ico('scan')}Bon scannen</button></article>`);
+      <article class="card rise"><h3 class="c-h">Gute, billige Eiweiß-Quellen</h3><ul class="facts">
+        <li><b>Magertopfen</b> – 250 g ≈ 30 g Eiweiß für ≈ 1 €</li><li><b>Eier</b> – 1 Ei ≈ 7,5 g</li><li><b>Rote Linsen</b> – 100 g trocken ≈ 25 g</li><li><b>Thunfisch natur</b> – 1 Dose ≈ 20 g</li><li><b>Milch</b> – 0,5 L ≈ 17 g</li><li><b>Hendl/Pute</b> – 100 g ≈ 23 g</li></ul></article>`);
+    case 'verbrannt': {
+      const ws = SP.weekStats(E.addDays(t, -E.wd(t)));
+      return G('Verbrannt', '⚡', 30, `
+      <article class="card rise"><p class="lede">„Verbrannt“ sind die Kalorien von deinem Lauf oder Mini-Workout. Die kommen an dem Tag zu deinem Ziel dazu – wer läuft, darf (und soll) mehr essen.</p>
+        <div class="big-num"><b data-count="${ws.kcal}">0</b><span>kcal diese Woche durch Laufen & Workouts</span></div></article>
+      <article class="card rise"><h3 class="c-h">So wird geschätzt</h3><ul class="facts"><li>MET-Wert × ${P.weight} kg × Dauer (lockeres Laufen ≈ 8,3 MET, Gehen ≈ 3,8 MET).</li><li>Läufe: Aufwärmen, Laufen, Gehpausen und Auslaufen getrennt gerechnet.</li><li>Workouts: Übungs- und Pausenzeiten getrennt.</li><li>Richtwerte – Uhren mit Puls messen genauer.</li></ul></article>`);
     }
+    case 'laufen': {
+      const L = SP.LEVELS[P.runLevel || 'einsteiger'];
+      return G('Dein Laufplan', '🏃', 25, `
+      <article class="card rise"><p class="lede">${(P.run || []).length}× pro Woche: ${(P.run || []).map(i => DAYS[i]).join(', ') || '–'} um ${P.runTime}. Niveau: <b>${L.name}</b> – ${esc(L.desc)}</p></article>
+      <article class="card rise"><h3 class="c-h">Aufbau</h3><ul class="facts"><li><b>Lockerer Lauf</b> – Zone 2, Grundlage für alles.</li><li><b>Intervalle</b> – kurze zügige Stücke, machen schneller.</li><li><b>Langer Lauf</b> – ruhig, aber länger.</li><li>Als Einsteiger: 8 Wochen Laufen/Gehen im Wechsel, jede Woche mehr Laufen – danach 30 Min am Stück.</li></ul></article>
+      <article class="card rise"><h3 class="c-h">Keine Lust?</h3><p class="lede">Kein Problem – aber nix tun gilt nicht 😉. Tippe auf „Keine Lust zu laufen“ und du bekommst ein Mini-Workout (10–13 Min, ohne Geräte) mit Timer und Anleitung. Die Serie bleibt erhalten.</p></article>
+      <article class="card rise"><h3 class="c-h">Serie 🔥</h3><p class="lede">Jeder geplante Lauftag, an dem du läufst oder das Workout machst, zählt zur Serie. Aktuell: <b>${SP.streak()}</b>.</p></article>`);
+    }
+    case 'zonen':
+      return G('Pulszonen', '❤️', 0, `
+      <article class="card rise"><p class="lede">Ohne Pulsuhr hilft der <b>Sprechtest</b>: Wie gut kannst du beim Laufen noch reden?</p>
+        <ul class="zlist">${Object.values(SP.ZONES).map(z => `<li><i style="--c:${z.c}"></i><b>${z.name}</b><span>${z.txt}</span></li>`).join('')}</ul></article>
+      <article class="card rise"><h3 class="c-h">Warum so langsam?</h3><p class="lede">80 % deiner Läufe sollten in Zone 2 sein. Das trainiert Herz und Ausdauer, ohne dich kaputt zu machen – und du hast noch Kraft fürs Krafttraining.</p></article>`);
     case 'bmi': {
-      const b = E.bmi();
-      const pos = Math.max(0, Math.min(100, (b - 15) / 20 * 100));
+      const b = E.bmi(), pos = Math.max(0, Math.min(100, (b - 15) / 20 * 100));
       return G('BMI', '⚖️', 200, `
       <article class="card rise"><div class="big-num"><b data-count="${b}" data-dec="1">0</b><span>${E.bmiLabel(b)} · ${P.height} cm, ${P.weight} kg</span></div>
         <div class="bmi-scale"><i style="left:${pos}%"></i><span>15</span><span>18,5</span><span>25</span><span>30</span><span>35</span></div>
         <p class="lede">BMI = Gewicht ÷ (Größe in m)² = ${P.weight} ÷ ${dec(P.height / 100, 2)}² = ${dec(b, 1)}.</p></article>
-      <article class="card rise"><h3 class="c-t">Was heißt das für dich?</h3><ul class="facts">
+      <article class="card rise"><h3 class="c-h">Was heißt das?</h3><ul class="facts">
         <li>Bei ${P.height} cm liegt Normalgewicht zwischen ${dec(18.5 * Math.pow(P.height / 100, 2), 0)} und ${dec(25 * Math.pow(P.height / 100, 2), 0)} kg.</li>
-        <li>Mit ${P.weight} kg bist du mitten drin – ideal, um sauber Muskeln aufzubauen.</li>
-        <li>Der BMI kennt keine Muskeln: Bei viel Training ist er nur ein grober Richtwert.</li>
-        <li>Wiege dich 1× pro Woche in der Früh nach dem Klo – immer unter gleichen Bedingungen.</li></ul>
+        <li>Der BMI kennt keine Muskeln – bei viel Training nur ein grober Richtwert.</li><li>1× pro Woche in der Früh wiegen, immer gleich.</li></ul>
         <button class="btn tap" data-go="#/weight">${ico('scale')}Gewicht eintragen</button></article>`);
     }
     case 'training':
-      return G('Trainingstag', '🏋️', 210, `
-      <article class="card rise"><p class="lede">An Trainingstagen brauchst du mehr Energie, mehr Eiweiß und mehr Wasser. Die App plant darum automatisch anders.</p></article>
-      <article class="card rise"><h3 class="c-t">Was sich ändert</h3><ul class="facts">
-        <li><b>Masse-Shake</b> als Jause – innerhalb 1–2 h nach dem Training.</li><li><b>+1 L Wasser</b> – das Ziel im Wasser-Zähler geht hoch.</li><li>Abendgerichte mit viel Eiweiß werden bevorzugt.</li></ul></article>
-      <article class="card rise"><h3 class="c-t">Deine Trainingstage</h3><div class="chips">${DS.map((d, i) => `<span class="chip${(P.train || []).includes(i) ? ' on' : ''}">${d}</span>`).join('')}</div><button class="btn ghost tap" data-go="#/profile">${ico('edit')}Ändern</button></article>`);
+      return G('Krafttraining', '🏋️', 210, `<article class="card rise"><p class="lede">An Krafttrainings-Tagen gibt’s den Masse-Shake als Jause, mehr Wasser und eiweißreiche Abendgerichte. Laufen plant die App separat an deinen Lauftagen.</p><button class="btn ghost tap" data-go="#/profile">${ico('edit')}Tage ändern</button></article>`);
     case 'box':
       return G('Einmal kochen, zweimal essen', '🍱', 160, `
-      <article class="card rise"><p class="lede">Jeden Abend kochst du einen Topf mit doppelter Menge: Die Hälfte wird gleich gegessen, die andere Hälfte kommt in Boxen – das ist morgen dein Mittagessen.</p></article>
-      <article class="card rise"><div class="box-demo"><div>${ico('pot')}<small>1 Topf</small></div><span>→</span><div>${ico('plate')}<small>${S.profile.persons}× jetzt</small></div><span>+</span><div>${ico('box')}<small>${S.profile.persons}× morgen</small></div></div>
-      <ul class="facts"><li>Spart Zeit: nur 1× pro Tag kochen.</li><li>Spart Geld: große Packungen, nix wird schlecht.</li><li><b>Wichtig:</b> Boxen abkühlen lassen und innerhalb von 2 Stunden in den Kühlschrank. Mittags 2–3 Min in die Mikrowelle.</li><li>Nudeln und Sauce getrennt einpacken – sonst werden sie matschig.</li></ul></article>`);
+      <article class="card rise"><p class="lede">Jeden Abend kochst du doppelt: Die Hälfte wird gleich gegessen, die andere Hälfte kommt in Boxen – das ist morgen dein Mittagessen.</p>
+      <ul class="facts"><li>Spart Zeit: nur 1× pro Tag kochen.</li><li>Spart Geld: große Packungen, nix wird schlecht.</li><li><b>Wichtig:</b> Boxen innerhalb von 2 Stunden in den Kühlschrank. Mittags 2–3 Min Mikrowelle.</li><li>Nudeln und Sauce getrennt einpacken.</li></ul></article>`);
     case 'abwechslung': {
       const v = E.varietyScore(t);
       return G('Abwechslung', '🌈', 280, `
-      <article class="card rise"><div class="big-num"><b data-count="${v.distinct}">0</b><span>verschiedene Gerichte in den nächsten 7 Tagen (von ${v.slots} Mahlzeiten)</span></div>
-        <div class="meter"><i data-w="${(v.pct * 100).toFixed(0)}%"></i></div></article>
-      <article class="card rise"><h3 class="c-t">So sorgt die App für Abwechslung</h3><ul class="facts">
-        <li>Ein Abendgericht kommt frühestens nach 8 Tagen wieder.</li><li>Nicht 2 Tage hintereinander dieselbe Beilage (Reis, Nudeln, Erdäpfel) oder dasselbe Fleisch.</li><li>Gerichte, die du noch nie hattest, werden bevorzugt.</li><li>Frühstück wechselt täglich – 9 kleine Varianten.</li><li>Gut bewertete Gerichte kommen öfter, schlecht bewertete fliegen raus.</li><li>Was gerade in Aktion ist, kommt eher auf den Plan.</li></ul>
-        <button class="btn ghost tap" data-act="shuffle">${ico('shuffle')}Restliche Woche neu mischen</button></article>`);
+      <article class="card rise"><div class="big-num"><b data-count="${v.distinct}">0</b><span>verschiedene Gerichte in den nächsten 7 Tagen (von ${v.slots} Mahlzeiten)</span></div><div class="mbar big"><i data-w="${(v.pct * 100).toFixed(0)}%"></i></div></article>
+      <article class="card rise"><h3 class="c-h">So sorgt die App für Abwechslung</h3><ul class="facts">
+        <li>Ein Abendgericht kommt frühestens nach 8 Tagen wieder.</li><li>Nicht 2 Tage hintereinander dieselbe Beilage oder dasselbe Fleisch.</li><li>Neue Gerichte werden bevorzugt.</li><li>Gut bewertete kommen öfter, schlecht bewertete fliegen raus.</li><li>Was gerade in Aktion ist, kommt eher auf den Plan.</li></ul>
+        <button class="btn ghost tap" data-act="shuffle">${ico('shuffle')}Ab morgen neu mischen</button></article>`);
     }
     case 'sterne':
       return G('Sterne & Austausch', '⭐', 45, `
-      <article class="card rise"><p class="lede">Nach dem Essen fragt dich die App per Benachrichtigung, wie es war. Du gibst 0 bis 5 Sterne.</p></article>
-      <article class="card rise"><h3 class="c-t">Was passiert mit den Sternen?</h3><ul class="facts">
-        <li><b>4–5 ★</b> – das Gericht kommt öfter dran.</li><li><b>3 ★</b> – bleibt normal im Plan.</li><li><b>0–2 ★</b> – wird gemerkt. Passiert das <b>2× oder öfter</b>, wird das Gericht automatisch aussortiert und durch ein anderes ersetzt.</li><li>Aussortierte Gerichte kannst du in „Meine Bewertungen“ jederzeit zurückholen.</li></ul>
+      <article class="card rise"><p class="lede">Nach dem Essen fragt dich die App, wie es war: 0 bis 5 Sterne.</p><ul class="facts">
+        <li><b>4–5 ★</b> – kommt öfter dran.</li><li><b>3 ★</b> – bleibt normal im Plan.</li><li><b>0–2 ★</b> – passiert das <b>2× oder öfter</b>, wird das Gericht automatisch aussortiert und ersetzt.</li><li>In „Meine Bewertungen“ kannst du es zurückholen.</li></ul>
         <button class="btn tap" data-go="#/ratings">${ico('star')}Meine Bewertungen</button></article>`);
     case 'fruehstueck':
       return G('Kleines Frühstück', '🌅', 38, `
-      <article class="card rise"><p class="lede">In der Früh geht bei euch wenig rein – darum ist das Frühstück bewusst klein (≈ 230–440 kcal). Der Rest kommt über den Tag.</p></article>
-      <article class="card rise"><h3 class="c-t">Tricks, wenn nix reingeht</h3><ul class="facts"><li><b>Trinken statt kauen:</b> Smoothie oder Kakao geht oft leichter.</li><li><b>Warm statt kalt:</b> Porridge oder Kakao.</li><li><b>Kleine Schüssel</b> – wirkt weniger.</li><li><b>Aufteilen:</b> halbe Portion um 7, halbe um 10.</li><li>Erst 1 Glas Wasser, 15 Min später essen.</li></ul></article>`);
+      <article class="card rise"><p class="lede">In der Früh geht wenig rein – darum ist das Frühstück bewusst klein (≈ 230–440 kcal).</p><ul class="facts"><li><b>Trinken statt kauen:</b> Smoothie oder Kakao.</li><li><b>Warm statt kalt:</b> Porridge.</li><li><b>Kleine Schüssel</b> – wirkt weniger.</li><li><b>Aufteilen:</b> halb um 7, halb um 10.</li></ul></article>`);
     case 'zeit':
-      return G('Zubereitungszeit', '⏱️', 190, `<article class="card rise"><p class="lede">Die Minuten sind die ungefähre Gesamtzeit inkl. Kochen. Aufwändige Gerichte (über 1 Stunde) plant die App nur am Wochenende ein.</p></article>`);
+      return G('Zubereitungszeit', '⏱️', 190, `<article class="card rise"><p class="lede">Ungefähre Gesamtzeit inkl. Kochen. Aufwändige Gerichte (über 1 Stunde) plant die App nur am Wochenende ein.</p></article>`);
     case 'aktionen':
       return G('Preise & Aktionen lernen', '🏷️', 100, `
-      <article class="card rise"><p class="lede">Jeder gescannte Kassenbon macht die App schlauer: Sie merkt sich, was wo wie viel kostet und wann etwas in Aktion ist.</p></article>
-      <article class="card rise"><h3 class="c-t">Was die App daraus macht</h3><ul class="facts"><li><b>Echte Kosten</b> für jedes Gericht und die Einkaufsliste.</li><li><b>Markt-Vergleich:</b> wo dein Wocheneinkauf am günstigsten ist.</li><li><b>Aktionen nutzen:</b> Ist Faschiertes in Aktion, kommt eher Chili oder Burrito-Bowl auf den Plan.</li><li><b>Aktions-Rhythmus:</b> nach ein paar Bons schätzt die App, wann etwas wieder billiger wird.</li></ul>
-        <p class="fine">Alles bleibt auf deinem Handy – die Texterkennung läuft offline.</p>
-        <button class="btn tap" data-go="#/bon">${ico('scan')}Bon scannen</button></article>`);
+      <article class="card rise"><p class="lede">Jeder gescannte Kassenbon macht die App schlauer: Sie merkt sich, was wo wie viel kostet und wann etwas in Aktion ist.</p><ul class="facts"><li><b>Echte Kosten</b> für Gerichte und Einkaufsliste.</li><li><b>Markt-Vergleich</b> für deinen Wocheneinkauf.</li><li><b>Aktionen nutzen:</b> Gerichte mit Aktions-Zutaten kommen eher dran.</li><li><b>Aktions-Rhythmus:</b> wann etwas wieder billiger wird.</li></ul>
+        <p class="fine">Alles bleibt auf deinem Handy – die Texterkennung läuft offline.</p><button class="btn tap" data-go="#/bon">${ico('scan')}Bon scannen</button></article>`);
+    case 'kosten': {
+      let sum = 0; for (let i = 0; i < 7; i++) sum += E.dayTotals(E.addDays(t, i)).eur;
+      return G('Kosten', '💶', 48, `
+      <article class="card rise"><p class="lede">Alle Preise <b>pro Person</b>, gerechnet mit dem ${S.profile.priceMode === 'cheapest' ? 'günstigsten Markt, den die App von deinen Bons kennt' : 'Stamm-Markt ' + storeName(S.profile.priceMode)} – sonst mit Schätzpreisen (≈).</p>
+        <div class="big-num"><b data-count="${sum}" data-dec="2" data-suf=" €">0</b><span>pro Person für 7 Tage · alle ${S.profile.persons}: ${eur(sum * S.profile.persons)}</span></div></article>
+      ${mealsBars('eur', '', 0)}`);
+    }
     default: return notFound();
   }
 }
 
 /* =========================================================
-   WOCHE
+   EINKAUF & KASSENBON
    ========================================================= */
-export function woche() {
+const shopSeg = on => `<div class="seg wide top-seg rise"><button class="tap${on === 'liste' ? ' on' : ''}" data-go="#/einkauf">Einkaufsliste</button><button class="tap${on === 'bon' ? ' on' : ''}" data-go="#/bon">Bons & Preise</button></div>`;
+export function einkauf() {
   E.ensurePlan();
-  const t = E.todayKey(), T = E.targets();
-  const days = []; for (let i = 0; i < 7; i++) days.push(E.addDays(t, i));
-  const tots = days.map(E.dayTotals);
-  const avgK = tots.reduce((s, x) => s + x.kcal, 0) / 7, avgP = tots.reduce((s, x) => s + x.prot, 0) / 7, sumE = tots.reduce((s, x) => s + x.eur, 0);
-  const v = E.varietyScore(t);
-  const max = Math.max(T.kcal * 1.15, ...tots.map(x => x.kcal));
+  const t = E.todayKey();
+  if (!ui.shopFrom || ui.shopFrom < t) ui.shopFrom = t;
+  const from = ui.shopFrom;
+  const L = E.shoppingList(from, 7);
+  const checked = new Set(S.shop['w' + from] || []);
+  const groups = CATS.map(c => ({ c, items: L.items.filter(i => ING[i.ing].cat === c) })).filter(g => g.items.length);
+  const n = L.items.filter(i => checked.has(i.ing)).length;
+  const maxC = L.compare.length ? Math.max(...L.compare.map(c => c.sum)) : 1;
   return { html: `
   <div class="page">
-    <header class="ptitle rise"><p class="kicker">${dLabel(days[0])} – ${dLabel(days[6])}</p><h1>Deine Woche</h1></header>
-    <div class="tiles4">
-      <button class="tile tap rise" data-go="#/info/kcal">${ico('fire')}<b data-count="${avgK}">0</b><small>Ø kcal / Tag</small></button>
-      <button class="tile tap rise" data-go="#/info/eiweiss">${ico('muscle')}<b data-count="${avgP}" data-suf=" g">0</b><small>Ø Eiweiß / Tag</small></button>
-      <button class="tile tap rise" data-go="#/info/kosten">${ico('euro')}<b data-count="${sumE}" data-dec="2" data-suf=" €">0</b><small>pro Person / Woche</small></button>
-      <button class="tile tap rise" data-go="#/info/abwechslung">${ico('spark')}<b data-count="${v.distinct}">0</b><small>verschiedene Gerichte</small></button>
-    </div>
-    <article class="card rise">
-      <h3 class="c-t">Kalorien pro Tag</h3>
-      <div class="chart">
-        <i class="target" style="bottom:${(T.kcal / max * 100).toFixed(1)}%"><span>Ziel ${fmtInt(T.kcal)}</span></i>
-        ${tots.map((x, i) => `<button class="col tap${i === 0 ? ' today' : ''}" data-act="day" data-k="${days[i]}" data-tab="1"><span class="cv">${fmtInt(x.kcal / 100) / 10}k</span><span class="cb"><i data-h="${(x.kcal / max * 100).toFixed(1)}%"></i></span><small>${DS[E.wd(days[i])]}</small></button>`).join('')}
-      </div>
-    </article>
-    ${days.map((k, i) => { const p = S.plan[k]; return `
-    <article class="card wday rise${i === 0 ? ' is-today' : ''}">
-      <button class="wd-h tap" data-act="day" data-k="${k}" data-tab="1"><b>${relDay(k)}</b><small>${DAYS[E.wd(k)]}, ${dLabel(k)}</small>${p.train ? '<span class="flag flag-train">Training</span>' : ''}<span class="mini-n">${fmtInt(tots[i].kcal)} kcal · ${eur(tots[i].eur)}</span></button>
-      <div class="wd-meals">${['f', 'm', 's', 'a'].map(sl => { const d = DISHES[p[sl]]; return `<button class="wm tap" data-go="#/dish/${p[sl]}?d=${k}&s=${sl}">${emo(d, 'xs')}<span><small>${slotLabel[sl]}</small>${esc(d.name)}</span></button>`; }).join('')}</div>
-    </article>`; }).join('')}
-    <button class="btn ghost wide rise tap" data-act="shuffle">${ico('shuffle')}Ab morgen neu mischen</button>
+    <div class="mesh m4" aria-hidden="true"></div>
+    <header class="top rise"><div><p class="kicker">${relDay(from)} + 6 Tage · ${S.profile.persons} Personen</p><h1 class="h1">Einkauf</h1></div><button class="iconbtn tap" data-go="#/bon" aria-label="Bon scannen">${ico('scan')}</button></header>
+    ${shopSeg('liste')}
+    <div class="seg wide rise"><button class="tap${from === t ? ' on' : ''}" data-act="shop-from" data-v="0">ab heute</button><button class="tap${from === E.addDays(t, 1) ? ' on' : ''}" data-act="shop-from" data-v="1">ab morgen</button></div>
+    ${L.compare.length ? `<article class="card rise"><h3 class="c-h">${ico('store', 'xs')} Wo am günstigsten?</h3>${L.compare.map((c, i) => `<button class="bar-row tap" data-go="#/store/${c.store}"><span class="br-l">${storeDot(c.store)}${storeName(c.store)}${i === 0 ? ' 🏆' : ''}</span><span class="br-t"><i data-w="${pct(c.sum, maxC)}" style="--c:${(STORES[c.store] || STORES.sonst).color}"></i></span><b>${eur(c.sum)}</b></button>`).join('')}<p class="fine">Mit deinen Bon-Preisen; fehlende Artikel geschätzt.</p></article>`
+      : `<button class="card hint-card rise tap" data-go="#/bon"><span class="hint-ico">${ico('scan')}</span><span><b>Preise noch geschätzt</b><small>Scanne nach dem Einkauf den Bon – dann siehst du, welcher Markt am günstigsten ist.</small></span>${ico('chev')}</button>`}
+    <div class="card shop-prog rise"><span>${n === L.items.length ? 'Alles im Wagerl! 🎉' : n + ' / ' + L.items.length + ' im Wagerl'}</span><div class="mbar big"><i data-w="${pct(n, L.items.length)}"></i></div></div>
+    ${groups.map(g => `<article class="card shop-g rise"><h3 class="c-h">${g.c}</h3>${g.items.map(it => { const G = ING[it.ing]; const on = checked.has(it.ing); return `
+      <div class="si${on ? ' done' : ''}"><button class="si-cb tap${on ? ' on' : ''}" data-act="shop-check" data-id="${it.ing}" aria-label="abhaken">${ico('check')}</button><span class="si-e">${G.e || '•'}</span>
+      <button class="si-t tap" data-go="#/ing/${it.ing}"><b>${esc(G.name)}${it.price.promo ? ' <span class="flag flag-promo">Aktion</span>' : ''}</b><small>${it.loose ? '≈ ' + lit(it.loose) + ' kg lose' : it.packs + ' × ' + packTxt(G)}${G.pantry ? ' · Vorrat?' : ''}${it.price.src === 'bon' ? ' · ' + storeName(it.price.store) : ''}</small></button>
+      <span class="si-p">${it.price.src === 'bon' ? '✓' : '≈'} ${dec(it.cost)}</span></div>`; }).join('')}</article>`).join('')}
+    <article class="card total-card rise"><div class="tc-row"><span>Summe</span><b>${eur(L.total)}</b></div><div class="tc-row sm"><span>Verbrauch diese Woche</span><span>${eur(L.use)}</span></div><div class="tc-row"><span>= pro Person</span><b class="ok">${eur(L.use / S.profile.persons)}</b></div><p class="fine">✓ Preis von deinem Bon · ≈ geschätzt. Vorrat (Öl, Mehl …) nur kaufen, wenn aus.</p></article>
+    <button class="btn ghost wide tap rise" data-act="shop-reset">Häkchen zurücksetzen</button>
   </div>` };
 }
 
-/* =========================================================
-   KASSENBON
-   ========================================================= */
 export function bon() {
   const L = E.learned();
   const nPrices = Object.values(L.info).reduce((s, per) => s + Object.keys(per).length, 0);
@@ -420,13 +637,15 @@ export function bon() {
   const recent = [...S.receipts].sort((a, b) => b.date < a.date ? -1 : b.date > a.date ? 1 : b.id < a.id ? -1 : 1).slice(0, 8);
   return { html: `
   <div class="page">
-    <header class="ptitle rise"><p class="kicker">Preise lernen</p><h1>Kassenbon</h1></header>
+    <div class="mesh m4" aria-hidden="true"></div>
+    <header class="top rise"><div><p class="kicker">Preise lernen</p><h1 class="h1">Einkauf</h1></div></header>
+    ${shopSeg('bon')}
     <article class="card scan-hero rise">
       <div class="paper-anim" aria-hidden="true"><div class="paper"><i></i><i></i><i></i><i class="s"></i><i></i><i class="s"></i><i></i></div><div class="beam"></div></div>
       <h2>Nach jedem Einkauf: Bon scannen</h2>
       <p>Die App liest Artikel, Preise und Aktionen – und gewöhnt sich an die Preise deines Supermarkts.</p>
-      ${isNative ? `<div class="scan-btns"><button class="btn big tap" data-act="scan" data-src="camera">${ico('camera')}Foto machen</button><button class="btn ghost big tap" data-act="scan" data-src="gallery">${ico('image')}Aus Galerie</button></div>
-      <p class="fine">Tipp: Bon flach hinlegen, gutes Licht, ganzer Bon im Bild. Lange Bons in 2 Fotos.</p>` :
+      ${isNative ? `<div class="scan-btns"><button class="btn big tap" data-act="scan" data-src="camera">${ico('camera')}Foto machen</button><button class="btn ghost big tap" data-act="scan" data-src="gallery">${ico('image')}Galerie</button></div>
+      <p class="fine">Tipp: Bon flach hinlegen, gutes Licht, ganzer Bon im Bild.</p>` :
       `<textarea id="bon-text" class="ta" rows="5" placeholder="Bon-Text hier einfügen (im Browser ohne Kamera-Texterkennung)"></textarea>
       <div class="scan-btns"><button class="btn tap" data-act="scan-text">${ico('scan')}Text auswerten</button><button class="btn ghost tap" data-act="scan-demo">Beispiel-Bon</button></div>`}
     </article>
@@ -436,8 +655,8 @@ export function bon() {
       <button class="tile tap rise" data-go="#/promos">${ico('spark')}<b data-count="${nPromo}">0</b><small>Aktionen erkannt</small></button>
       <button class="tile tap rise" data-go="#/info/kosten">${ico('store')}<b data-count="${Object.keys(stores).length}">0</b><small>Märkte</small></button>
     </div>
-    ${Object.keys(stores).length ? `<h2 class="sec rise">Deine Märkte</h2><div class="hscroll rise">${Object.entries(stores).map(([id, s]) => `<button class="store-card tap" data-go="#/store/${id}" style="--c:${(STORES[id] || STORES.sonst).color}"><b>${storeName(id)}</b><small>${s.n} Bon${s.n > 1 ? 's' : ''} · Ø ${eur(s.sum / s.n)}</small><small>zuletzt ${dLabel(s.last)}</small></button>`).join('')}</div>` : ''}
-    ${promos.length ? `<h2 class="sec rise">Gerade in Aktion</h2><article class="card rise">${promos.map(pr => `<button class="promo-row tap" data-go="#/ing/${pr.ing}">${storeDot(pr.store)}<span><b>${esc(ING[pr.ing].name)}</b><small>${storeName(pr.store)} · ${dLabel(pr.d)}</small></span><em>${pr.pct ? '−' + pr.pct + ' %' : eur(pr.price)}</em></button>`).join('')}</article>` : ''}
+    ${Object.keys(stores).length ? `<h2 class="sec rise">Deine Märkte</h2><div class="hscroll rise">${Object.entries(stores).map(([id, s]) => `<button class="store-card tap" data-go="#/store/${id}" style="--c:${(STORES[id] || STORES.sonst).color}"><b>${storeName(id)}</b><small>${s.n} Bon${s.n > 1 ? 's' : ''} · Ø ${eur(s.sum / s.n)}</small><small>zuletzt ${dShort(s.last)}</small></button>`).join('')}</div>` : ''}
+    ${promos.length ? `<h2 class="sec rise">Gerade in Aktion</h2><article class="card rise">${promos.map(pr => `<button class="promo-row tap" data-go="#/ing/${pr.ing}"><span class="pr-e">${ING[pr.ing].e}</span><span><b>${esc(ING[pr.ing].name)}</b><small>${storeDot(pr.store)}${storeName(pr.store)} · ${dShort(pr.d)}</small></span><em>${pr.pct ? '−' + pr.pct + ' %' : eur(pr.price)}</em></button>`).join('')}</article>` : ''}
     <h2 class="sec rise">Letzte Bons</h2>
     ${recent.length ? recent.map(r => `<button class="card rc-row tap rise" data-go="#/receipt/${r.id}">${storeDot(r.store)}<span><b>${storeName(r.store)}</b><small>${dLabel(r.date)} · ${r.items.length} Artikel${r.items.some(i => i.promo) ? ' · ' + r.items.filter(i => i.promo).length + ' Aktionen' : ''}</small></span><em>${eur(r.total || r.items.reduce((a, i) => a + i.price - (i.disc || 0), 0))}</em>${ico('chev')}</button>`).join('') : '<p class="empty rise">Noch keine Bons. Der erste Scan dauert nur ein paar Sekunden.</p>'}
   </div>` };
@@ -458,8 +677,8 @@ export function review() {
     ${dhead('Bon prüfen', R.items.length + ' Artikel erkannt')}
     ${R.img ? `<img class="rv-img rise" src="${R.img}" alt="Kassenbon">` : ''}
     <article class="card rise">
-      <h3 class="c-t">${ico('store')}Markt</h3>
-      <div class="chips">${Object.entries(STORES).map(([id, s]) => `<button class="chip tap${R.store === id ? ' on' : ''}" data-act="rv-store" data-v="${id}" style="--c:${s.color}">${storeDot(id)}${s.name}</button>`).join('')}</div>
+      <h3 class="c-h">${ico('store', 'xs')} Markt</h3>
+      <div class="chips">${Object.entries(STORES).map(([id, s]) => `<button class="chip tap${R.store === id ? ' on' : ''}" data-act="rv-store" data-v="${id}">${storeDot(id)}${s.name}</button>`).join('')}</div>
       <label class="field"><span>Datum</span><input type="date" id="rv-date" value="${R.date || E.todayKey()}"></label>
       <div class="sumcheck ${R.total == null ? '' : ok ? 'ok' : 'bad'}">${R.total == null ? 'Summe am Bon nicht gefunden' : ok ? ico('check') + 'Summe stimmt: ' + eur(R.total) + (R.extraDisc ? ' (inkl. Bon-Rabatt −' + dec(R.extraDisc) + ')' : '') : 'Erkannt ' + eur(sum) + ' · laut Bon ' + eur(R.total) + ' – bitte kurz prüfen'}</div>
     </article>
@@ -499,8 +718,7 @@ export function store(id) {
   const rows = Object.entries(L.info).filter(([, per]) => per[id]).map(([ing, per]) => {
     const x = per[id];
     const others = Object.entries(per).filter(([s]) => s !== id && per[s].regular != null);
-    const cheapest = others.every(([, o]) => x.regular <= o.regular + 0.005);
-    return { ing, x, cheapest: others.length > 0 && cheapest };
+    return { ing, x, cheapest: others.length > 0 && others.every(([, o]) => x.regular <= o.regular + 0.005) };
   }).sort((a, b) => ING[a.ing].name.localeCompare(ING[b.ing].name));
   const other = Object.entries(L.other[id] || {}).slice(0, 30);
   const spent = rs.reduce((s, r) => s + (r.total || r.items.reduce((a, i) => a + i.price - (i.disc || 0), 0)), 0);
@@ -508,11 +726,10 @@ export function store(id) {
   <div class="page detail">
     ${dhead(st.name, rs.length + ' Bons')}
     <section class="store-hero rise" style="--c:${st.color}"><b>${st.name}</b><span>${eur(spent)} insgesamt · Ø ${eur(rs.length ? spent / rs.length : 0)} pro Einkauf</span></section>
-    ${rows.filter(r => r.cheapest).length ? `<article class="card rise"><h3 class="c-t">${ico('spark')}Hier am günstigsten</h3><div class="chips">${rows.filter(r => r.cheapest).map(r => `<button class="chip tap" data-go="#/ing/${r.ing}">${esc(ING[r.ing].name)}</button>`).join('')}</div></article>` : ''}
-    <article class="card rise"><h3 class="c-t">${ico('tag')}Gelernte Preise</h3>
-      ${rows.length ? rows.map(r => `<button class="price-row tap" data-go="#/ing/${r.ing}"><span><b>${esc(ING[r.ing].name)}</b><small>${r.x.n}× gekauft${r.x.promoN ? ' · ' + r.x.promoN + '× Aktion' : ''}${r.x.rhythm ? ' · Aktion ca. alle ' + r.x.rhythm.every + ' Tage' : ''}</small></span><em>${r.x.promoNow ? '<span class="flag flag-promo">Aktion</span>' : ''}${eur(r.x.regular ?? r.x.eff)}</em></button>`).join('') : '<p class="fine">Noch keine Zutaten erkannt.</p>'}
-      <p class="fine">Preise je Packung (${'z. B. Milch 1 L, Reis 1 kg'}).</p></article>
-    ${other.length ? `<article class="card rise"><h3 class="c-t">Weitere Artikel von deinen Bons</h3>${other.map(([n, l]) => `<div class="price-row"><span><b>${esc(n)}</b><small>${l.length}× gekauft${l.some(x => x.promo) ? ' · auch in Aktion' : ''}</small></span><em>${eur(l[l.length - 1].price)}</em></div>`).join('')}</article>` : ''}
+    ${rows.filter(r => r.cheapest).length ? `<article class="card rise"><h3 class="c-h">${ico('spark', 'xs')} Hier am günstigsten</h3><div class="chips">${rows.filter(r => r.cheapest).map(r => `<button class="chip tap" data-go="#/ing/${r.ing}">${ING[r.ing].e} ${esc(ING[r.ing].name)}</button>`).join('')}</div></article>` : ''}
+    <article class="card rise"><h3 class="c-h">${ico('tag', 'xs')} Gelernte Preise</h3>
+      ${rows.length ? rows.map(r => `<button class="price-row tap" data-go="#/ing/${r.ing}"><span class="pr-e">${ING[r.ing].e}</span><span><b>${esc(ING[r.ing].name)}</b><small>${r.x.n}× gekauft${r.x.promoN ? ' · ' + r.x.promoN + '× Aktion' : ''}${r.x.rhythm ? ' · Aktion ca. alle ' + r.x.rhythm.every + ' Tage' : ''}</small></span><em>${r.x.promoNow ? '<span class="flag flag-promo">Aktion</span>' : ''}${eur(r.x.regular ?? r.x.eff)}</em></button>`).join('') : '<p class="fine">Noch keine Zutaten erkannt.</p>'}</article>
+    ${other.length ? `<article class="card rise"><h3 class="c-h">Weitere Artikel</h3>${other.map(([n, l]) => `<div class="price-row"><span><b>${esc(n)}</b><small>${l.length}× gekauft${l.some(x => x.promo) ? ' · auch in Aktion' : ''}</small></span><em>${eur(l[l.length - 1].price)}</em></div>`).join('')}</article>` : ''}
   </div>` };
 }
 
@@ -524,94 +741,69 @@ export function ingredient(id) {
   const max = Math.max(g.base, ...vals) * 1.15;
   const hist = Object.entries(per).flatMap(([s, x]) => x.obs.map(o => ({ ...o, s }))).sort((a, b) => b.d < a.d ? -1 : 1).slice(0, 12);
   const used = Object.entries(DISHES).filter(([, d]) => d.need[id]);
-  const packTxt = g.unit === 'stk' ? g.pack + ' Stk' : (g.pack < 1 ? fmtInt(g.pack * 1000) + (g.unit === 'kg' ? ' g' : ' ml') : lit(g.pack) + (g.unit === 'kg' ? ' kg' : ' L'));
   return { html: `
   <div class="page detail">
     ${dhead(esc(g.name), g.cat)}
-    <article class="card rise"><div class="big-num"><b>${eur(p.price)}</b><span>je ${packTxt} · ${p.src === 'bon' ? 'günstigster bekannter Preis: ' + storeName(p.store) + (p.promo ? ' (Aktion)' : '') : 'geschätzt – noch auf keinem Bon'}</span></div></article>
-    <article class="card rise"><h3 class="c-t">${ico('store')}Preis je Markt</h3>
-      ${Object.keys(per).length ? Object.entries(per).map(([s, x]) => `<div class="bar-row"><span class="br-l">${storeDot(s)}${storeName(s)}</span><span class="br-t"><i data-w="${pct(x.regular ?? x.eff, max)}" style="--c:${(STORES[s] || STORES.sonst).color}"></i></span><b>${eur(x.regular ?? x.eff)}</b></div>${x.promoNow ? `<p class="fine promo-l">${ico('tag')}gerade in Aktion: ${eur(x.promoNow.per)}${x.promoNow.pct ? ' (−' + x.promoNow.pct + ' %)' : ''} seit ${dLabel(x.promoNow.d)}</p>` : ''}${x.rhythm ? `<p class="fine">Aktion bei ${storeName(s)} etwa alle ${x.rhythm.every} Tage – nächste vermutlich um den ${dLabel(x.rhythm.next)}.</p>` : ''}`).join('') : '<p class="fine">Noch keine Daten. Sobald der Artikel auf einem gescannten Bon steht, siehst du hier die Preise je Markt.</p>'}
-      <div class="bar-row base"><span class="br-l">≈ Schätzung</span><span class="br-t"><i data-w="${pct(g.base, max)}"></i></span><b>${eur(g.base)}</b></div>
-    </article>
-    ${hist.length ? `<article class="card rise"><h3 class="c-t">${ico('clock')}Verlauf</h3>${hist.map(o => `<div class="price-row"><span><b>${dLabel(o.d)} · ${storeName(o.s)}</b><small>${esc(o.name || '')}</small></span><em>${o.promo ? '<span class="flag flag-promo">' + (o.pct ? '−' + o.pct + ' %' : 'Aktion') + '</span>' : ''}${eur(o.per)}</em></div>`).join('')}</article>` : ''}
-    <article class="card rise"><h3 class="c-t">${ico('pot')}Steckt in</h3><div class="chips">${used.map(([did, d]) => `<button class="chip tap" data-go="#/dish/${did}">${d.emoji} ${esc(d.name)}</button>`).join('') || '<span class="fine">–</span>'}</div></article>
+    <section class="info-hero rise" style="--h:120"><span class="ih-emo float">${g.e || '🛒'}</span><h1>${eur(p.price)}</h1><p>je ${packTxt(g)} · ${p.src === 'bon' ? 'günstigster bekannter Preis: ' + storeName(p.store) + (p.promo ? ' (Aktion)' : '') : 'geschätzt – noch auf keinem Bon'}</p></section>
+    <article class="card rise"><h3 class="c-h">${ico('store', 'xs')} Preis je Markt</h3>
+      ${Object.keys(per).length ? Object.entries(per).map(([s, x]) => `<div class="bar-row"><span class="br-l">${storeDot(s)}${storeName(s)}</span><span class="br-t"><i data-w="${pct(x.regular ?? x.eff, max)}" style="--c:${(STORES[s] || STORES.sonst).color}"></i></span><b>${eur(x.regular ?? x.eff)}</b></div>${x.promoNow ? `<p class="fine promo-l">${ico('tag', 'xs')}gerade in Aktion: ${eur(x.promoNow.per)}${x.promoNow.pct ? ' (−' + x.promoNow.pct + ' %)' : ''} seit ${dShort(x.promoNow.d)}</p>` : ''}${x.rhythm ? `<p class="fine">Aktion bei ${storeName(s)} etwa alle ${x.rhythm.every} Tage – nächste vermutlich um den ${dLabel(x.rhythm.next)}.</p>` : ''}`).join('') : '<p class="fine">Noch keine Daten. Sobald der Artikel auf einem gescannten Bon steht, siehst du hier die Preise je Markt.</p>'}
+      <div class="bar-row base"><span class="br-l">≈ Schätzung</span><span class="br-t"><i data-w="${pct(g.base, max)}"></i></span><b>${eur(g.base)}</b></div></article>
+    ${g.n ? `<article class="card rise"><h3 class="c-h">Nährwerte je ${g.unit === 'stk' ? 'Stück' : '100 ' + (g.unit === 'l' ? 'ml' : 'g')}</h3><div class="nutrow"><span><b>${g.n[0]}</b><small>kcal</small></span><span class="m-prot"><b>${dec(g.n[1], 1)} g</b><small>Eiweiß</small></span><span class="m-kh"><b>${dec(g.n[2], 1)} g</b><small>KH</small></span><span class="m-fat"><b>${dec(g.n[3], 1)} g</b><small>Fett</small></span></div></article>` : ''}
+    ${hist.length ? `<article class="card rise"><h3 class="c-h">${ico('clock', 'xs')} Verlauf</h3>${hist.map(o => `<div class="price-row"><span><b>${dShort(o.d)} · ${storeName(o.s)}</b><small>${esc(o.name || '')}</small></span><em>${o.promo ? '<span class="flag flag-promo">' + (o.pct ? '−' + o.pct + ' %' : 'Aktion') + '</span>' : ''}${eur(o.per)}</em></div>`).join('')}</article>` : ''}
+    <article class="card rise"><h3 class="c-h">${ico('pot', 'xs')} Steckt in</h3><div class="chips">${used.map(([did, d]) => `<button class="chip tap" data-go="#/dish/${did}">${d.emoji} ${esc(d.name)}</button>`).join('') || '<span class="fine">–</span>'}</div></article>
   </div>` };
 }
 
 export function promos() {
   const L = E.learned().info, now = [], rhythm = [];
-  for (const [ing, per] of Object.entries(L)) for (const [s, x] of Object.entries(per)) {
-    if (x.promoNow) now.push({ ing, s, x });
-    if (x.rhythm) rhythm.push({ ing, s, x });
-  }
+  for (const [ing, per] of Object.entries(L)) for (const [s, x] of Object.entries(per)) { if (x.promoNow) now.push({ ing, s, x }); if (x.rhythm) rhythm.push({ ing, s, x }); }
   rhythm.sort((a, b) => a.x.rhythm.next < b.x.rhythm.next ? -1 : 1);
   return { html: `
   <div class="page detail">
     ${dhead('Aktionen')}
-    <article class="card rise"><h3 class="c-t">${ico('tag')}Gerade in Aktion (letzte 7 Tage)</h3>${now.length ? now.map(n => `<button class="promo-row tap" data-go="#/ing/${n.ing}">${storeDot(n.s)}<span><b>${esc(ING[n.ing].name)}</b><small>${storeName(n.s)} · ${dLabel(n.x.promoNow.d)} · normal ${eur(n.x.regular ?? n.x.promoNow.reg)}</small></span><em>${eur(n.x.promoNow.per)}</em></button>`).join('') : '<p class="fine">Keine aktuellen Aktionen erkannt. Scanne deinen nächsten Bon!</p>'}</article>
-    <article class="card rise"><h3 class="c-t">${ico('clock')}Aktions-Rhythmus</h3>${rhythm.length ? rhythm.map(n => `<button class="promo-row tap" data-go="#/ing/${n.ing}">${storeDot(n.s)}<span><b>${esc(ING[n.ing].name)}</b><small>${storeName(n.s)} · ca. alle ${n.x.rhythm.every} Tage</small></span><em>~${dLabel(n.x.rhythm.next)}</em></button>`).join('') : '<p class="fine">Braucht mindestens 2 Aktionen desselben Artikels im selben Markt. Je mehr Bons, desto besser die Vorhersage.</p>'}</article>
+    <article class="card rise"><h3 class="c-h">${ico('tag', 'xs')} Gerade in Aktion</h3>${now.length ? now.map(n => `<button class="promo-row tap" data-go="#/ing/${n.ing}"><span class="pr-e">${ING[n.ing].e}</span><span><b>${esc(ING[n.ing].name)}</b><small>${storeDot(n.s)}${storeName(n.s)} · ${dShort(n.x.promoNow.d)} · normal ${eur(n.x.regular ?? n.x.promoNow.reg)}</small></span><em>${eur(n.x.promoNow.per)}</em></button>`).join('') : '<p class="fine">Keine aktuellen Aktionen erkannt. Scanne deinen nächsten Bon!</p>'}</article>
+    <article class="card rise"><h3 class="c-h">${ico('clock', 'xs')} Aktions-Rhythmus</h3>${rhythm.length ? rhythm.map(n => `<button class="promo-row tap" data-go="#/ing/${n.ing}"><span class="pr-e">${ING[n.ing].e}</span><span><b>${esc(ING[n.ing].name)}</b><small>${storeName(n.s)} · ca. alle ${n.x.rhythm.every} Tage</small></span><em>~${dShort(n.x.rhythm.next)}</em></button>`).join('') : '<p class="fine">Braucht mindestens 2 Aktionen desselben Artikels im selben Markt.</p>'}</article>
   </div>` };
 }
 
 /* =========================================================
-   EINKAUF
+   ICH – Profil, Fortschritt, Einstellungen
    ========================================================= */
-export function einkauf() {
-  E.ensurePlan();
-  const t = E.todayKey();
-  if (!ui.shopFrom || ui.shopFrom < t) ui.shopFrom = t;
-  const from = ui.shopFrom;
-  const L = E.shoppingList(from, 7);
-  const wk = 'w' + from;
-  const checked = new Set(S.shop[wk] || []);
-  const groups = CATS.map(c => ({ c, items: L.items.filter(i => ING[i.ing].cat === c) })).filter(g => g.items.length);
-  const n = L.items.filter(i => checked.has(i.ing)).length;
-  const maxC = L.compare.length ? Math.max(...L.compare.map(c => c.sum)) : 1;
-  return { html: `
-  <div class="page">
-    <header class="ptitle rise"><p class="kicker">${relDay(from)} + 6 Tage · ${S.profile.persons} Personen</p><h1>Einkauf</h1></header>
-    <div class="seg wide rise"><button class="tap${from === t ? ' on' : ''}" data-act="shop-from" data-v="0">ab heute</button><button class="tap${from === E.addDays(t, 1) ? ' on' : ''}" data-act="shop-from" data-v="1">ab morgen</button></div>
-    ${L.compare.length ? `<article class="card rise"><h3 class="c-t">${ico('store')}Wo am günstigsten?</h3>${L.compare.map((c, i) => `<button class="bar-row tap" data-go="#/store/${c.store}"><span class="br-l">${storeDot(c.store)}${storeName(c.store)}${i === 0 ? ' 🏆' : ''}</span><span class="br-t"><i data-w="${pct(c.sum, maxC)}" style="--c:${(STORES[c.store] || STORES.sonst).color}"></i></span><b>${eur(c.sum)}</b></button>`).join('')}<p class="fine">Gerechnet mit deinen Bon-Preisen; fehlende Artikel mit Schätzpreis. Bekannt: ${L.compare.map(c => storeName(c.store) + ' ' + c.known + '/' + c.of).join(' · ')}</p></article>`
-      : `<button class="card hint-card rise tap" data-go="#/bon"><span class="hint-ico">${ico('scan')}</span><span><b>Preise noch geschätzt</b><small>Scanne nach dem Einkauf den Bon – dann siehst du hier, welcher Markt am günstigsten ist.</small></span>${ico('chev')}</button>`}
-    <div class="card shop-prog rise"><span>${n === L.items.length ? 'Alles im Wagerl! 🎉' : n + ' / ' + L.items.length + ' im Wagerl'}</span><div class="meter green"><i data-w="${pct(n, L.items.length)}"></i></div></div>
-    <div class="receipt rise">
-      <div class="rc-head"><span>WOCHENEINKAUF</span><span>${S.profile.persons} PERS.</span></div>
-      <div class="rc-sub">✓ = Preis von deinem Bon · ≈ = geschätzt</div>
-      ${groups.map(g => `<h3 class="rc-g">${g.c}</h3>${g.items.map(it => { const G = ING[it.ing]; const on = checked.has(it.ing); return `
-        <div class="rc-item${on ? ' done' : ''}"><button class="rc-cb tap${on ? ' on' : ''}" data-act="shop-check" data-id="${it.ing}" aria-label="abhaken">${ico('check')}</button>
-        <button class="rc-txt tap" data-go="#/ing/${it.ing}"><span class="rc-name">${esc(G.name)}${it.price.promo ? ' <span class="flag flag-promo">Aktion</span>' : ''}</span><span class="rc-pack">${it.loose ? '≈ ' + E.lit(it.loose) + ' kg lose' : it.packs + ' × ' + (G.unit === 'stk' ? G.pack + ' Stk' : G.pack < 1 ? fmtInt(G.pack * 1000) + (G.unit === 'kg' ? ' g' : ' ml') : lit(G.pack) + (G.unit === 'kg' ? ' kg' : ' L'))} · brauchst ${E.fmtAmount(it.ing, it.amt).replace(/ \(.*\)/, '')}${G.pantry ? ' · Vorrat?' : ''}${it.price.src === 'bon' ? ' · ' + storeName(it.price.store) : ''}</span></button>
-        <span class="rc-price">${it.price.src === 'bon' ? '✓' : '≈'}${dec(it.cost)}</span></div>`; }).join('')}`).join('')}
-      <div class="rc-total"><span>SUMME</span><span>${eur(L.total)}</span></div>
-      <div class="rc-line"><span>davon Verbrauch diese Woche</span><span>${dec(L.use)}</span></div>
-      <div class="rc-line strong"><span>= pro Person</span><span>${dec(L.use / S.profile.persons)}</span></div>
-      <div class="rc-foot">Vorrat (Öl, Mehl, Zucker …) nur kaufen, wenn aus.<br>DANKE FÜR IHREN EINKAUF</div>
-    </div>
-    <button class="btn ghost wide tap rise" data-act="shop-reset">Häkchen zurücksetzen</button>
-  </div>` };
+function lineChart(pts, h = 110) {
+  if (pts.length < 2) return '<p class="fine">Mindestens 2 Einträge nötig.</p>';
+  const mn = Math.min(...pts) - 0.5, mx = Math.max(...pts) + 0.5;
+  const xy = pts.map((v, i) => [(i / (pts.length - 1) * 300), (h - 12 - (v - mn) / (mx - mn) * (h - 24))]);
+  const d = xy.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  return `<svg class="lchart" viewBox="0 0 300 ${h}" preserveAspectRatio="none"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><path d="${d} L300 ${h} L0 ${h}Z" fill="url(#lg)"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
-
-/* =========================================================
-   ICH / PROFIL & EINSTELLUNGEN
-   ========================================================= */
 export function ich() {
-  const P = S.profile, T = E.targets(), b = E.bmi();
+  const P = S.profile, T = E.targets(), b = E.bmi(), t = E.todayKey();
   const nRated = Object.keys(S.ratings).length, nBlocked = Object.keys(S.blocked).length;
+  const days = []; for (let i = 6; i >= 0; i--) days.push(E.addDays(t, -i));
+  const comp = days.map(k => { const x = S.plan[k] ? E.dayTotals(k) : null; return x && x.kcal ? Math.min(1, x.eaten / x.kcal) : 0; });
+  const actMin = days.map(k => { const a = S.act[k]; return a && a.done ? a.min || 0 : 0; });
+  const maxMin = Math.max(30, ...actMin);
   const row = (go, icon, title, sub, act) => `<button class="list-row tap rise" ${act ? 'data-act="' + act + '"' : 'data-go="' + go + '"'}><span class="lr-ico">${ico(icon)}</span><span><b>${title}</b><small>${sub}</small></span>${ico('chev')}</button>`;
   return { html: `
-  <div class="page">
-    <header class="ptitle rise"><p class="kicker">Profil & Einstellungen</p><h1>Ich</h1></header>
+  <div class="page detail">
+    ${dhead('Ich', 'Profil & Fortschritt')}
     <article class="card me rise">
       <span class="me-av">${P.name ? esc(P.name[0].toUpperCase()) : '🙂'}</span>
-      <div><b>${P.name ? esc(P.name) : 'Du'}</b><small>${P.height} cm · ${P.weight} kg${P.age ? ' · ' + P.age + ' J.' : ''}</small></div>
-      <div class="me-chips"><button class="chip tap" data-go="#/info/bmi">BMI ${dec(b, 1)}</button><button class="chip tap" data-go="#/info/kcal">${fmtInt(T.kcal)} kcal</button><button class="chip tap" data-go="#/info/eiweiss">${T.prot} g Eiweiß</button></div>
+      <div><b>${P.name ? esc(P.name) : 'Du'}</b><small>${P.height} cm · ${lit(P.weight)} kg${P.age ? ' · ' + P.age + ' J.' : ''} · ${T.goal.name}</small></div>
+      <div class="me-chips"><button class="chip tap" data-go="#/info/bmi">BMI ${dec(b, 1)}</button><button class="chip tap" data-go="#/info/kcal">${fmtInt(T.kcal)} kcal</button><button class="chip tap" data-go="#/info/makros">${T.prot} g Eiweiß</button></div>
     </article>
+    <h2 class="sec rise">Fortschritt</h2>
+    <article class="card rise"><div class="row-b"><h3 class="c-h">${ico('scale', 'xs')} Gewicht</h3><button class="link tap" data-go="#/weight">Eintragen ${ico('chev', 'xs')}</button></div>${S.weights.length ? lineChart(S.weights.slice(-12).map(w => w.kg)) : '<p class="fine">Noch keine Einträge – 1× pro Woche wiegen.</p>'}</article>
+    <div class="duo rise">
+      <article class="card mini-chart"><h3 class="c-h">Mahlzeiten</h3><div class="bars7">${comp.map((v, i) => `<span><i data-h="${(v * 100).toFixed(0)}%"></i><small>${DS[E.wd(days[i])][0]}</small></span>`).join('')}</div><p class="fine">vom Plan gegessen</p></article>
+      <article class="card mini-chart run"><h3 class="c-h">Aktivität</h3><div class="bars7">${actMin.map((v, i) => `<span><i data-h="${(v / maxMin * 100).toFixed(0)}%"></i><small>${DS[E.wd(days[i])][0]}</small></span>`).join('')}</div><p class="fine">Minuten Lauf/Workout</p></article>
+    </div>
+    <h2 class="sec rise">Einstellungen</h2>
     <div class="list">
-      ${row('#/profile', 'user', 'Profil & Ziel', T.goal.name + ' · ' + P.persons + ' Personen · ' + (P.train || []).map(i => DS[i]).join(', '))}
-      ${row('#/notif', 'bell', 'Erinnerungen', 'Kochen, Essen bewerten, Trinken, Einkauf')}
+      ${row('#/profile', 'user', 'Profil, Ziel & Laufen', (P.run || []).length + '× Laufen · ' + (P.train || []).length + '× Kraft · ' + P.persons + ' Personen')}
+      ${row('#/notif', 'bell', 'Erinnerungen', 'Kochen, Essen bewerten, Laufen, Einkauf')}
       ${row('#/ratings', 'star', 'Meine Bewertungen', nRated + ' Gerichte bewertet' + (nBlocked ? ' · ' + nBlocked + ' aussortiert' : ''))}
-      ${row('#/rezepte', 'book', 'Alle Rezepte', Object.keys(DISHES).length + ' Gerichte')}
       ${row('#/trinken', 'drop', 'Trinkplan', 'Ruhetag ≈ ' + lit(T.water) + ' L · Training ≈ ' + lit(T.water + 1) + ' L')}
-      ${row('#/weight', 'scale', 'Gewicht', S.weights.length ? 'zuletzt ' + lit(S.weights[S.weights.length - 1].kg) + ' kg' : '1× pro Woche eintragen')}
       ${row('#/promos', 'tag', 'Aktionen & Preise', S.receipts.length + ' Bons gescannt')}
       ${row('#/info/fruehstueck', 'sun', 'Kleines Frühstück', 'Tricks, wenn in der Früh nix reingeht')}
     </div>
@@ -623,16 +815,24 @@ export function ich() {
       ${row('', 'edit', 'Backup einspielen', 'Text aus einem Backup einfügen', 'restore')}
       ${row('', 'trash', 'Alles zurücksetzen', 'Plan, Bons, Bewertungen löschen', 'reset')}
     </div>
-    <p class="about rise">You By What You Eat · Version 1.0.0<br>Alle Daten bleiben auf deinem Handy.</p>
+    <p class="about rise">You By What You Eat · Version 1.1.0<br>Alle Daten bleiben auf deinem Handy.</p>
   </div>` };
 }
 
+export function runSetupHTML() {
+  const P = S.profile;
+  return `<span class="flabel">Lauftage</span>
+    <div class="chips">${DS.map((d, i) => `<button class="chip tap${(P.run || []).includes(i) ? ' on run' : ''}" data-act="runday" data-v="${i}">${d}</button>`).join('')}</div>
+    <label class="field"><span>Uhrzeit (Erinnerung)</span><input type="time" data-p="runTime" value="${P.runTime}"></label>
+    <span class="flabel">Niveau</span>
+    <div class="goal-list">${Object.entries(SP.LEVELS).map(([v, l]) => `<button class="goal tap${(P.runLevel || 'einsteiger') === v ? ' on' : ''}" data-act="pset" data-k="runLevel" data-v="${v}"><b>${l.name}</b><small>${esc(l.desc)}</small></button>`).join('')}</div>`;
+}
 export function profile() {
   const P = S.profile;
   const stores = [...new Set(S.receipts.map(r => r.store))];
   return { html: `
   <div class="page detail">
-    ${dhead('Profil & Ziel')}
+    ${dhead('Profil, Ziel & Laufen')}
     <article class="card rise">
       <label class="field"><span>Name (optional)</span><input data-p="name" value="${esc(P.name)}" placeholder="z. B. Max" autocomplete="off"></label>
       <div class="field-2"><label class="field"><span>Größe (cm)</span><input data-p="height" type="number" inputmode="numeric" value="${P.height}"></label>
@@ -641,38 +841,40 @@ export function profile() {
       <span class="flabel">Geschlecht (für die Kalorien-Formel)</span>
       <div class="chips">${[['m', 'Mann'], ['w', 'Frau'], ['', 'keine Angabe']].map(([v, l]) => `<button class="chip tap${(P.sex || '') === v ? ' on' : ''}" data-act="pset" data-k="sex" data-v="${v}">${l}</button>`).join('')}</div>
     </article>
-    <article class="card rise"><h3 class="c-t">Ziel</h3>
+    <article class="card rise"><h3 class="c-h">Ziel</h3>
       <div class="goal-list">${Object.entries(E.GOALS).map(([v, g]) => `<button class="goal tap${P.goal === v ? ' on' : ''}" data-act="pset" data-k="goal" data-v="${v}"><b>${g.name}</b><small>${esc(g.desc)}</small></button>`).join('')}</div></article>
-    <article class="card rise"><h3 class="c-t">Haushalt</h3>
-      <div class="stepper"><button class="iconbtn tap" data-act="persons" data-v="-1">${ico('minus')}</button><b>${P.persons} ${P.persons === 1 ? 'Person' : 'Personen'}</b><button class="iconbtn tap" data-act="persons" data-v="1">${ico('plus')}</button></div>
-      <p class="fine">Die Topf-Mengen und die Einkaufsliste werden automatisch angepasst.</p></article>
-    <article class="card rise"><h3 class="c-t">Trainingstage</h3>
+    <article class="card rise"><h3 class="c-h">${ico('run', 'xs')} Laufen</h3>${runSetupHTML()}
+      <button class="btn ghost wide tap" data-act="run-restart">${ico('shuffle')}Laufplan bei Woche 1 neu starten</button></article>
+    <article class="card rise"><h3 class="c-h">${ico('dumbbell', 'xs')} Krafttraining</h3>
       <div class="chips">${DS.map((d, i) => `<button class="chip tap${(P.train || []).includes(i) ? ' on' : ''}" data-act="train" data-v="${i}">${d}</button>`).join('')}</div>
       <p class="fine">An diesen Tagen: Shake als Jause, mehr Wasser, mehr Eiweiß.</p></article>
-    <article class="card rise"><h3 class="c-t">Preise rechnen mit</h3>
-      <div class="chips"><button class="chip tap${P.priceMode === 'cheapest' ? ' on' : ''}" data-act="pset" data-k="priceMode" data-v="cheapest">günstigstem Markt</button>${stores.map(s => `<button class="chip tap${P.priceMode === s ? ' on' : ''}" data-act="pset" data-k="priceMode" data-v="${s}">${storeDot(s)}${storeName(s)}</button>`).join('')}</div>
-      ${!stores.length ? '<p class="fine">Sobald du Bons gescannt hast, kannst du hier deinen Stamm-Markt wählen.</p>' : ''}</article>
+    <article class="card rise"><h3 class="c-h">Haushalt</h3>
+      <div class="stepper"><button class="iconbtn tap" data-act="persons" data-v="-1">${ico('minus')}</button><b>${P.persons} ${P.persons === 1 ? 'Person' : 'Personen'}</b><button class="iconbtn tap" data-act="persons" data-v="1">${ico('plus')}</button></div></article>
+    <article class="card rise"><h3 class="c-h">Preise rechnen mit</h3>
+      <div class="chips"><button class="chip tap${P.priceMode === 'cheapest' ? ' on' : ''}" data-act="pset" data-k="priceMode" data-v="cheapest">günstigstem Markt</button>${stores.map(s => `<button class="chip tap${P.priceMode === s ? ' on' : ''}" data-act="pset" data-k="priceMode" data-v="${s}">${storeDot(s)}${storeName(s)}</button>`).join('')}</div></article>
   </div>` };
 }
 
 export function notif(perm) {
   const N = S.notif;
-  const row = (key, icon, title, sub) => `<div class="nrow rise"><span class="lr-ico">${ico(icon)}</span><span class="nr-t"><b>${title}</b><small>${sub}</small></span>
-    <input type="time" data-n="${key}" value="${(N[key].t || '').split(',')[0]}" ${N[key].on ? '' : 'disabled'}>
+  const row = (key, icon, title, sub, time = true) => `<div class="nrow rise"><span class="lr-ico">${ico(icon)}</span><span class="nr-t"><b>${title}</b><small>${sub}</small></span>
+    ${time ? `<input type="time" data-n="${key}" value="${(N[key].t || '').split(',')[0]}" ${N[key].on ? '' : 'disabled'}>` : ''}
     <label class="switch"><input type="checkbox" data-nt="${key}"${N[key].on ? ' checked' : ''}><i class="sw"></i></label></div>`;
   return { html: `
   <div class="page detail">
     ${dhead('Erinnerungen')}
-    <article class="card rise perm ${perm === 'granted' || perm === 'browser' ? 'ok' : ''}">${ico('bell')}<div><b>${perm === 'granted' ? 'Benachrichtigungen sind an' : perm === 'browser' ? 'Im Browser keine Benachrichtigungen' : 'Benachrichtigungen sind aus'}</b><p>${perm === 'granted' ? 'Die App erinnert dich zu den Zeiten unten – mit dem Gericht des Tages.' : perm === 'browser' ? 'In der installierten App funktioniert das.' : 'Erlaube Benachrichtigungen, damit dich die App ans Kochen und Bewerten erinnert.'}</p>
+    <article class="card rise perm ${perm === 'granted' || perm === 'browser' ? 'ok' : ''}">${ico('bell')}<div><b>${perm === 'granted' ? 'Benachrichtigungen sind an' : perm === 'browser' ? 'Im Browser keine Benachrichtigungen' : 'Benachrichtigungen sind aus'}</b><p>${perm === 'granted' ? 'Die App erinnert dich zu den Zeiten unten – mit Gericht und Lauf des Tages.' : perm === 'browser' ? 'In der installierten App funktioniert das.' : 'Erlaube Benachrichtigungen, damit dich die App erinnert.'}</p>
       ${perm !== 'granted' && perm !== 'browser' ? `<button class="btn sm tap" data-act="notif-ask">Erlauben</button>` : ''}</div></article>
     <div class="list">
       ${row('f', 'sun', 'Frühstück', 'Kleiner Start in den Tag')}
-      ${row('cook', 'pot', 'Kochen', '„Zeit zum Kochen – hast du schon angefangen?“')}
-      ${row('rate', 'star', 'Essen bewerten', '„Schon gegessen? Wie war’s?“ – 0–5 Sterne')}
+      ${row('cook', 'pot', 'Kochen', '„Zeit zum Kochen – schon angefangen?“')}
+      ${row('rate', 'star', 'Essen bewerten', '„Schon gegessen? Wie war’s?“')}
+      ${row('run', 'run', 'Laufen', 'An Lauftagen um ' + S.profile.runTime, false)}
+      ${row('runFollow', 'dumbbell', 'Nachfragen', '2 h später: „Nicht gelaufen? Dann Mini-Workout“', false)}
       ${row('water', 'drop', 'Trinken', 'Vormittag + Nachmittag')}
       ${row('shop', 'cart', 'Einkaufstag', DAYS[N.shop.day] + ' – danach Bon scannen')}
     </div>
-    <article class="card rise"><h3 class="c-t">Einkaufstag</h3><div class="chips">${DS.map((d, i) => `<button class="chip tap${N.shop.day === i ? ' on' : ''}" data-act="shopday" data-v="${i}">${d}</button>`).join('')}</div></article>
+    <article class="card rise"><h3 class="c-h">Einkaufstag</h3><div class="chips">${DS.map((d, i) => `<button class="chip tap${N.shop.day === i ? ' on' : ''}" data-act="shopday" data-v="${i}">${d}</button>`).join('')}</div></article>
     <button class="btn ghost wide tap rise" data-act="notif-test">${ico('bell')}Test-Benachrichtigung (in 5 Sek.)</button>
   </div>` };
 }
@@ -683,21 +885,10 @@ export function ratings() {
   return { html: `
   <div class="page detail">
     ${dhead('Meine Bewertungen')}
-    ${blocked.length ? `<h2 class="sec rise">Aussortiert</h2>${blocked.map(id => `<div class="card rrow rise">${emo(DISHES[id], 'sm')}<button class="tap rr-b" data-go="#/dish/${id}"><b>${esc(DISHES[id].name)}</b><small>${S.blocked[id].auto ? 'automatisch – öfter unter 3 ★' : 'von dir aussortiert'} · seit ${dLabel(S.blocked[id].since)}</small></button><button class="btn sm ghost tap" data-act="unblock" data-id="${id}">Zurückholen</button></div>`).join('')}` : ''}
+    ${blocked.length ? `<h2 class="sec rise">Aussortiert</h2>${blocked.map(id => `<div class="card rrow rise">${plate(id, 0, 'sm')}<button class="tap rr-b" data-go="#/dish/${id}"><b>${esc(DISHES[id].name)}</b><small>${S.blocked[id].auto ? 'automatisch – öfter unter 3 ★' : 'von dir aussortiert'} · seit ${dShort(S.blocked[id].since)}</small></button><button class="btn sm ghost tap" data-act="unblock" data-id="${id}">Zurück</button></div>`).join('')}` : ''}
     <h2 class="sec rise">Bewertet</h2>
-    ${rated.length ? rated.map(r => `<button class="card rrow tap rise" data-go="#/dish/${r.id}">${emo(DISHES[r.id], 'sm')}<span class="rr-b"><b>${esc(DISHES[r.id].name)}</b><small>${r.n}× bewertet</small></span><span class="rr-s">${stars(r.avg)}<b>${dec(r.avg, 1)}</b></span></button>`).join('') : '<p class="empty rise">Noch nichts bewertet. Nach dem Essen kommt eine Erinnerung – oder tippe bei „Heute“ auf die Sterne.</p>'}
+    ${rated.length ? rated.map(r => `<button class="card rrow tap rise" data-go="#/dish/${r.id}">${plate(r.id, r.avg / 5, 'sm')}<span class="rr-b"><b>${esc(DISHES[r.id].name)}</b><small>${r.n}× bewertet</small></span><span class="rr-s">${stars(r.avg)}<b>${dec(r.avg, 1)}</b></span></button>`).join('') : '<p class="empty rise">Noch nichts bewertet. Nach dem Essen kommt eine Erinnerung.</p>'}
     <button class="btn ghost wide tap rise" data-go="#/info/sterne">${ico('info')}Wie funktioniert das?</button>
-  </div>` };
-}
-
-export function rezepte(filter) {
-  const f = filter || 'alle';
-  const list = Object.entries(DISHES).filter(([, d]) => f === 'alle' || (f === 'veggie' ? d.protein === 'veggie' || (d.slot !== 'a' && !Object.keys(d.need).some(i => ING[i].cat === 'Fleisch & Fisch')) : d.slot === f));
-  return { html: `
-  <div class="page detail">
-    ${dhead('Alle Rezepte', list.length + ' Gerichte')}
-    <div class="chips rise">${[['alle', 'Alle'], ['f', 'Frühstück'], ['s', 'Jause'], ['a', 'Abendtopf'], ['veggie', 'Ohne Fleisch']].map(([v, l]) => `<button class="chip tap${f === v ? ' on' : ''}" data-act="rz-filter" data-v="${v}">${l}</button>`).join('')}</div>
-    <div class="grid">${list.map(([id, d]) => `<button class="rz-card tap rise${E.isBlocked(id) ? ' blocked' : ''}" data-go="#/dish/${id}" style="--h:${d.hue}"><span class="rz-emo">${d.emoji}</span><b>${esc(d.name)}</b><small>${d.min} Min · ${fmtInt(d.kcal)} kcal · ${eur(E.dishCost(id).portion)}</small>${stars(E.avgRating(id))}</button>`).join('')}</div>
   </div>` };
 }
 
@@ -710,39 +901,44 @@ export function trinken() {
   <div class="page detail">
     ${dhead('Trinkplan', 'pro Person')}
     <section class="info-hero rise" style="--h:210"><span class="ih-emo float">💧</span><h1>≈ ${lit(mode === 'train' ? T.water + 1 : T.water)} L am Tag</h1></section>
-    <div class="seg wide rise"><button class="tap${mode === 'rest' ? ' on' : ''}" data-act="drink" data-v="rest">Ruhetag</button><button class="tap${mode === 'train' ? ' on' : ''}" data-act="drink" data-v="train">Trainingstag</button></div>
+    <div class="seg wide rise"><button class="tap${mode === 'rest' ? ' on' : ''}" data-act="drink" data-v="rest">Ruhetag</button><button class="tap${mode === 'train' ? ' on' : ''}" data-act="drink" data-v="train">Trainings-/Lauftag</button></div>
     <article class="card rise"><ol class="drink-list">${list.map(x => `<li class="drink${x.tr ? ' tr' : ''}"><span class="d-time">${x.t}</span><span class="d-what">${x.what}<span class="d-bar"><i data-w="${(x.l / 0.6 * 100).toFixed(0)}%"></i></span></span><b>${lit(x.l)} L</b></li>`).join('')}</ol>
-      <div class="cost-sum"><span>Gesamt</span><b>≈ ${lit(Math.round(sum * 10) / 10)} L</b></div>
-      <p class="fine">Dein persönliches Ziel: ≈ 35 ml pro kg = ${lit(T.water)} L, an Trainingstagen +1 L.</p></article>
-    <article class="card rise"><h3 class="c-t">Faustregeln</h3><ul class="facts water">
-      <li><b>Check:</b> Harn hellgelb = passt. Dunkelgelb = nachtrinken.</li><li><b>Beim Training</b> ab ca. 60 Min: alle 15–20 Min ein paar Schluck.</li><li><b>Danach:</b> pro 0,5 kg, die du beim Training verlierst, 0,6–0,75 L nachtrinken.</li><li><b>1 Stunde vorm Schlafen</b> Schluss – sonst musst du nachts raus.</li><li>Leitungswasser reicht völlig – spart Geld und Schlepperei.</li></ul></article>
+      <div class="cost-sum"><span>Gesamt</span><b>≈ ${lit(Math.round(sum * 10) / 10)} L</b></div></article>
+    <article class="card rise"><h3 class="c-h">Faustregeln</h3><ul class="facts water"><li><b>Check:</b> Harn hellgelb = passt.</li><li><b>Beim Laufen</b> ab 60 Min: alle 15–20 Min ein paar Schluck.</li><li><b>Danach:</b> pro 0,5 kg Gewichtsverlust 0,6–0,75 L nachtrinken.</li><li>1 Stunde vorm Schlafen Schluss.</li></ul></article>
   </div>` };
 }
 
 export function weight() {
   const W = S.weights, P = S.profile;
-  const last = W.slice(-12);
-  let spark = '';
-  if (last.length >= 2) {
-    const mn = Math.min(...last.map(x => x.kg)) - 0.5, mx = Math.max(...last.map(x => x.kg)) + 0.5;
-    const pts = last.map((x, i) => `${(i / (last.length - 1) * 300).toFixed(1)},${(90 - (x.kg - mn) / (mx - mn) * 80).toFixed(1)}`).join(' ');
-    spark = `<svg class="spark" viewBox="0 0 300 100" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
-  }
   let advice = 'Trag 1× pro Woche dein Gewicht ein – dann sagt dir die App, ob du mehr oder weniger essen solltest.';
   if (W.length >= 3) {
-    const a = W[W.length - 3], b = W[W.length - 1], days = Math.max(1, E.daysBetween(a.d, b.d)), perWeek = (b.kg - a.kg) / days * 7;
-    if (P.goal === 'muskel') advice = perWeek < 0.1 ? 'Du nimmst kaum zu (' + dec(perWeek, 2) + ' kg/Woche). Nimm abends etwas mehr Reis/Nudeln (+250 g pro Topf) oder ein Glas Milch extra.' : perWeek > 0.6 ? 'Du nimmst schnell zu (' + dec(perWeek, 2) + ' kg/Woche). Etwas kleinere Portionen bei der Jause.' : 'Perfekt: ' + dec(perWeek, 2) + ' kg pro Woche – genau im Ziel.';
+    const a = W[W.length - 3], b = W[W.length - 1], perWeek = (b.kg - a.kg) / Math.max(1, E.daysBetween(a.d, b.d)) * 7;
+    if (P.goal === 'muskel') advice = perWeek < 0.1 ? 'Du nimmst kaum zu (' + dec(perWeek, 2) + ' kg/Woche). Abends etwas mehr Reis/Nudeln oder ein Glas Milch extra.' : perWeek > 0.6 ? 'Du nimmst schnell zu (' + dec(perWeek, 2) + ' kg/Woche). Jause etwas kleiner.' : 'Perfekt: ' + dec(perWeek, 2) + ' kg pro Woche – genau im Ziel.';
     else if (P.goal === 'abnehmen') advice = perWeek > -0.2 ? 'Es geht kaum runter – Jause etwas kleiner machen.' : 'Läuft: ' + dec(perWeek, 2) + ' kg pro Woche.';
     else advice = Math.abs(perWeek) < 0.2 ? 'Gewicht stabil – passt.' : 'Gewicht ändert sich um ' + dec(perWeek, 2) + ' kg/Woche.';
   }
   return { html: `
   <div class="page detail">
     ${dhead('Gewicht')}
-    <article class="card rise"><div class="big-num"><b>${lit(P.weight)} kg</b><span>aktuell · ${P.height} cm · BMI ${dec(E.bmi(), 1)}</span></div>${spark}
+    <article class="card rise"><div class="big-num"><b>${lit(P.weight)} kg</b><span>aktuell · ${P.height} cm · BMI ${dec(E.bmi(), 1)}</span></div>${W.length >= 2 ? lineChart(W.slice(-12).map(w => w.kg)) : ''}
       <div class="w-add"><input id="w-in" type="text" inputmode="decimal" autocomplete="off" placeholder="z. B. ${lit(P.weight)}"><button class="btn tap" data-act="w-add">${ico('plus')}Eintragen</button></div></article>
-    <article class="card rise"><h3 class="c-t">${ico('spark')}Einschätzung</h3><p>${advice}</p></article>
+    <article class="card rise"><h3 class="c-h">${ico('spark', 'xs')} Einschätzung</h3><p>${advice}</p></article>
     ${W.length ? `<article class="card rise">${[...W].reverse().slice(0, 15).map(x => `<div class="price-row"><span><b>${dLabel(x.d)}</b></span><em>${lit(x.kg)} kg</em></div>`).join('')}</article>` : ''}
   </div>` };
+}
+
+/* Schnell-Aktionen (Plus-Knopf in der Mitte) */
+export function quickSheetHTML() {
+  const t = E.todayKey(), act = SP.plannedActivity(t);
+  const tiles = [
+    ['scan', 'scan', 'Bon scannen'],
+    ['star', 'rate', 'Essen bewerten'],
+    act && !act.done ? ['run', 'go', act.kind === 'run' ? 'Lauf starten' : 'Workout starten', act.kind === 'run' ? '#/timer/run/' + t : '#/timer/workout/' + act.id + '?d=' + t] : ['dumbbell', 'go', 'Mini-Workout', '#/workout/' + SP.workoutFor(t) + '?d=' + t],
+    ['drop', 'water', '+ Glas Wasser'],
+    ['scale', 'go', 'Gewicht', '#/weight'],
+    ['book', 'go', 'Rezepte', '#/rezepte']
+  ];
+  return `<h2 class="sh-t">Schnell erledigt</h2><div class="qgrid">${tiles.map(([icon, kind, label, arg]) => `<button class="qt tap" data-q="${kind}" ${arg ? 'data-arg="' + arg + '"' : ''}><span class="qt-i">${ico(icon)}</span><b>${label}</b></button>`).join('')}</div>`;
 }
 
 /* =========================================================
@@ -750,12 +946,12 @@ export function weight() {
    ========================================================= */
 export function onboarding() {
   const P = S.profile, s = ui.ob;
-  const dots = [0, 1, 2, 3].map(i => `<i class="${i === s ? 'on' : ''}"></i>`).join('');
+  const dots = [0, 1, 2, 3, 4].map(i => `<i class="${i === s ? 'on' : ''}"></i>`).join('');
   let body = '';
   if (s === 0) body = `
-    <div class="ob-hero"><span class="ob-e e1">🥣</span><span class="ob-e e2">🍛</span><span class="ob-e e3">🥦</span><span class="ob-e e4">🍳</span><span class="ob-e e5">🍌</span><div class="ob-plate">🍽️</div></div>
+    <div class="ob-hero"><span class="ob-e e1">🥣</span><span class="ob-e e2">🍛</span><span class="ob-e e3">🥦</span><span class="ob-e e4">🏃</span><span class="ob-e e5">🍌</span><div class="ob-plate">🍽️</div></div>
     <h1 class="ob-title">You By<br><span>What You Eat</span></h1>
-    <p class="ob-p">Dein Speiseplan, der mitdenkt: kleines Frühstück, jeden Tag Abwechslung, Preise von deinem Supermarkt – und Erinnerungen ans Kochen und Bewerten.</p>
+    <p class="ob-p">Dein Speiseplan, der mitdenkt: kleines Frühstück, jeden Tag Abwechslung, Preise von deinem Supermarkt, Laufplan – und Erinnerungen an alles.</p>
     <button class="btn big wide tap" data-act="ob-next">Los geht’s</button>`;
   if (s === 1) body = `
     <h2 class="ob-h">Das bist du</h2><p class="ob-p">Schon eingetragen – stimmt das so?</p>
@@ -771,17 +967,18 @@ export function onboarding() {
     <div class="goal-list">${Object.entries(E.GOALS).map(([v, g]) => `<button class="goal tap${P.goal === v ? ' on' : ''}" data-act="pset" data-k="goal" data-v="${v}"><b>${g.name}</b><small>${esc(g.desc)}</small></button>`).join('')}</div>
     <span class="flabel">Für wie viele Personen kochst du?</span>
     <div class="stepper"><button class="iconbtn tap" data-act="persons" data-v="-1">${ico('minus')}</button><b>${P.persons} ${P.persons === 1 ? 'Person' : 'Personen'}</b><button class="iconbtn tap" data-act="persons" data-v="1">${ico('plus')}</button></div>
-    <span class="flabel">Trainingstage</span>
+    <span class="flabel">Krafttraining</span>
     <div class="chips">${DS.map((d, i) => `<button class="chip tap${(P.train || []).includes(i) ? ' on' : ''}" data-act="train" data-v="${i}">${d}</button>`).join('')}</div>
     <button class="btn big wide tap" data-act="ob-next">Weiter</button>`;
-  if (s === 3) body = `
+  if (s === 3) body = `<div class="ob-icon">🏃</div><h2 class="ob-h">Laufen</h2><p class="ob-p">An welchen Tagen willst du laufen? Keine Lust an einem Tag? Dann gibt’s stattdessen ein kurzes Workout mit Anleitung.</p>${runSetupHTML()}<button class="btn big wide tap" data-act="ob-next">Weiter</button>`;
+  if (s === 4) body = `
     <div class="ob-bell">${ico('bell')}</div>
     <h2 class="ob-h">Erinnerungen</h2>
-    <p class="ob-p">Die App fragt dich, ob du schon gekocht und gegessen hast – und wie es war (0–5 Sterne). Was öfter unter 3 Sterne bekommt, wird automatisch ersetzt.</p>
-    <ul class="facts"><li>07:00 – kleines Frühstück</li><li>18:00 – Zeit zum Kochen</li><li>20:30 – Schon gegessen? Wie war’s?</li><li>${DAYS[S.notif.shop.day]} – Einkaufstag + Bon scannen</li></ul>
+    <p class="ob-p">Die App fragt dich, ob du schon gekocht und gegessen hast und wie es war (0–5 Sterne) – und erinnert dich ans Laufen.</p>
+    <ul class="facts"><li>07:00 – kleines Frühstück</li><li>18:00 – Zeit zum Kochen</li><li>20:30 – Schon gegessen? Wie war’s?</li><li>${P.runTime} an Lauftagen – Laufen (oder Mini-Workout)</li></ul>
     <button class="btn big wide tap" data-act="ob-notif">${ico('bell')}Erinnerungen erlauben</button>
     <button class="btn ghost wide tap" data-act="ob-done">Später</button>`;
-  return { html: `<div class="page ob"><div class="ob-dots">${dots}</div><div class="ob-step ob-s${s}">${body}</div></div>`, cls: 'ob-screen' };
+  return { html: `<div class="page ob"><div class="mesh" aria-hidden="true"></div><div class="ob-dots">${dots}</div><div class="ob-step ob-s${s}">${body}</div></div>`, cls: 'ob-screen' };
 }
 
 function notFound() { return { html: `<div class="page detail">${dhead('Hoppla')}<p class="empty">Nicht gefunden.</p></div>` }; }
