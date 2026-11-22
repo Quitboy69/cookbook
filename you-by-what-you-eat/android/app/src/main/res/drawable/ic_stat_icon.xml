@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Benachrichtigungs-Symbol: Schüssel mit Blatt (weiß, Android färbt es ein) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,11.2c0,-2.6 1.8,-4.2 4.4,-4.2 -0.2,2.6 -1.8,4.2 -4.4,4.2z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,12h18a9,8.5 0,0 1,-18 0z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,21h6v1.5h-6z" />
+</vector>

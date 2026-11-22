@@ -1,0 +1,24 @@
+{
+  "appId": "at.youbywhatyoueat.app",
+  "appName": "You By What You Eat",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0B1410"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#12B886"
+    },
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#0B1410",
+      "showSpinner": false
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}
