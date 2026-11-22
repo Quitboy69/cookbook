@@ -138,7 +138,7 @@ function updateNav(route) {
   const base = route.replace('#/', '').split(/[/?]/)[0];
   const tab = TAB_OF[base] || null;
   const nav = $('#nav');
-  nav.classList.toggle('hidden', base === 'onboarding' || base === 'review' || base === 'timer');
+  nav.classList.toggle('hidden', ['onboarding', 'review', 'timer', 'foto'].includes(base));
   $$('.nav-btn', nav).forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   const on = $('.nav-btn.on', nav);
   const pill = $('#nav-pill');

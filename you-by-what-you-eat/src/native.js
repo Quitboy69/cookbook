@@ -8,6 +8,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 
 export const isNative = Capacitor.isNativePlatform();
 const ReceiptOcr = registerPlugin('ReceiptOcr');
+const FoodAi = registerPlugin('FoodAi');
 
 /* ---------- Haptik ---------- */
 export const haptic = {
@@ -45,6 +46,24 @@ export async function takeReceiptPhoto(source) {
   return { path: photo.path || photo.webPath, webPath: photo.webPath };
 }
 export async function ocr(path) { return ReceiptOcr.recognize({ path }); }
+/* Essen auf dem Foto erkennen – lokale KI (AIY Food, offline) */
+export async function classifyFood(path) { return FoodAi.classify({ path }); }
+/* Kleines Vorschaubild für die Tagesliste (≈ 5–10 KB) */
+export function makeThumb(src, size = 160) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = size; c.height = size;
+        const s = Math.min(img.naturalWidth, img.naturalHeight);
+        c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+        res(c.toDataURL('image/jpeg', 0.6));
+      } catch (e) { res(null); }
+    };
+    img.onerror = () => res(null);
+    img.src = src;
+  });
+}
 
 /* ---------- Benachrichtigungen ---------- */
 let notifReady = false;

@@ -8,3 +8,6 @@ android/build/
 android/app/build/
 android/capacitor-cordova-android-plugins/build/
 *.apk
+
+# Foto-KI-Modell (wird per scripts/get-food-model.sh geladen)
+android/app/src/main/assets/food_v1.tflite

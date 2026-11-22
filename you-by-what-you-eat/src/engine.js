@@ -384,8 +384,9 @@ export function dayTotals(k) {
   for (const sl of ['f', 'm', 's', 'a']) {
     const d = DISHES[p[sl]]; if (!d) continue;
     t.kcal += d.kcal; t.prot += d.prot; t.kh += d.kh; t.fat += d.fat; t.eur += dishCost(p[sl]).portion;
-    if (log.eaten && log.eaten[sl]) { t.eaten += d.kcal; t.eatenProt += d.prot; t.eatenKh += d.kh; t.eatenFat += d.fat; }
+    if (log.eaten && log.eaten[sl] && !(log.skip && log.skip[sl])) { t.eaten += d.kcal; t.eatenProt += d.prot; t.eatenKh += d.kh; t.eatenFat += d.fat; }
   }
+  for (const x of (S.extra && S.extra[k]) || []) { t.eaten += x.kcal; t.eatenProt += x.prot; t.eatenKh += x.kh; t.eatenFat += x.fat; t.extra = (t.extra || 0) + x.kcal; }
   return t;
 }
 export function varietyScore(fromKey, n = 7) {

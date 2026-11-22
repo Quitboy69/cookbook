@@ -18,6 +18,7 @@ const DEFAULT = () => ({
   shop: {},        // weekKey -> [ingIds]
   weights: [],     // { d, kg }
   act: {},         // date -> { type: 'run'|'workout', done, km, min, kcal, workout }
+  extra: {},       // date -> [{ id, t, name, e, g, kcal, prot, kh, fat, slot, replaces, thumb }] (Foto-Essen)
   notif: {
     f:    { on: true,  t: '07:00' },
     cook: { on: true,  t: '18:00' },

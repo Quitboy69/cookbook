@@ -5,6 +5,7 @@ import * as E from './engine.js';
 import * as SP from './sport.js';
 import { ico, esc, ring } from './ui.js';
 import { isNative } from './native.js';
+import * as FA from './foodai.js';
 
 const { fmtInt, dec, eur, lit, DAYS, DS, MONTHS } = E;
 export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null, rz: 'alle', timer: null };
@@ -97,7 +98,8 @@ export function heute() {
   const unrated = p && E.ratingOf(p.a, k, 'a') == null;
 
   // „Als Nächstes“
-  const nextSl = p ? ['f', 'm', 's', 'a'].find(sl => !(log.eaten && log.eaten[sl])) : null;
+  const skip = log.skip || {};
+  const nextSl = p ? ['f', 'm', 's', 'a'].find(sl => !(log.eaten && log.eaten[sl]) && !skip[sl]) : null;
   let next = '';
   if (nextSl) {
     const d = DISHES[p[nextSl]];
@@ -119,6 +121,7 @@ export function heute() {
   const per = S.profile.persons;
   const meals = p ? ['f', 'm', 's', 'a'].map(sl => {
     const id = p[sl], d = DISHES[id], eaten = log.eaten && log.eaten[sl];
+    if (skip[sl]) { const ex = FA.extrasOf(k).find(x => x.replaces && x.slot === sl); return `<li class="ml skipped"><button class="ml-main tap" data-go="#/dish/${id}?d=${k}&s=${sl}">${plate(id, 0)}<span class="ml-t"><b>${slotLabel[sl]} <span class="flag flag-box">ersetzt</span></b><span>${esc(d.name)}</span><small>stattdessen: ${ex ? esc(ex.name) : 'eigenes Essen'}</small></span></button></li>`; }
     const amt = sl === 'a' ? (ui.amt === 'all' ? '1 Topf · ' + per * 2 + ' Portionen' : '1 Portion') : sl === 'm' && p.mBox ? (ui.amt === 'all' ? per + ' Boxen' : '1 Box') + ' vom Vorabend' : Object.entries(d.need).slice(0, 3).map(([ing, x]) => E.fmtIng(ing, x * (ui.amt === 'all' ? per : 1))).join(' · ');
     return `<li class="ml${eaten ? ' eaten' : ''}"><button class="ml-main tap" data-go="#/dish/${id}?d=${k}&s=${sl}">${plate(id, eaten ? 1 : 0)}<span class="ml-t"><b>${slotLabel[sl]}${sl === 'f' ? ' <span class="flag flag-small">klein</span>' : ''}${sl === 'm' && p.mBox ? ' <span class="flag flag-box">Box</span>' : ''}${sl === 'a' ? ' <span class="flag flag-cook">kochen</span>' : ''}</b><span>${esc(d.name)}</span><small>${eaten ? fmtInt(d.kcal) : 0} / ${fmtInt(d.kcal)} kcal · ${amt}</small></span></button><button class="ml-add tap${eaten ? ' on' : ''}" data-act="eat" data-k="${k}" data-slot="${sl}" aria-label="${eaten ? 'gegessen' : 'als gegessen markieren'}">${ico(eaten ? 'check' : 'plus')}</button></li>`;
   }).join('') : '';
@@ -128,7 +131,7 @@ export function heute() {
     <div class="mesh" aria-hidden="true"></div>
     <header class="top rise">
       <div><p class="kicker">${greeting()}${name}</p><h1 class="h1">${isToday ? 'Heute' : relDay(k)}</h1><p class="sub">${DAYS[E.wd(k)]}, ${dLabel(k)}${p && p.train ? ' · <span class="ok">Krafttraining</span>' : ''}${SP.isRunDay(k) ? ' · <span class="run-c">Lauftag</span>' : ''}</p></div>
-      <button class="avatar tap" data-go="#/ich" aria-label="Profil">${S.profile.name ? esc(S.profile.name[0].toUpperCase()) : ico('user')}</button>
+      <div class="top-btns"><button class="iconbtn tap" data-act="quick" aria-label="Schnell-Aktionen">${ico('grid')}</button><button class="avatar tap" data-go="#/ich" aria-label="Profil">${S.profile.name ? esc(S.profile.name[0].toUpperCase()) : ico('user')}</button></div>
     </header>
     <div class="rise">${weekCircles(k)}</div>
 
@@ -140,7 +143,8 @@ export function heute() {
       <p class="plan-note">${ico('book', 'xs')} Plan: ${fmtInt(tot.kcal)} kcal · ${tot.prot} g Eiweiß · ${eur(tot.eur)} pro Person</p>
     </article>
 
-    <article class="card rise"><div class="row-b"><h2 class="c-h">Mahlzeiten</h2><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">1 Pers.</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${per}</button></div></div><ul class="mlist">${meals}</ul></article>
+    <article class="card rise"><div class="row-b"><h2 class="c-h">Mahlzeiten</h2><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">1 Pers.</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${per}</button></div></div><ul class="mlist">${meals}${FA.extrasOf(k).map(x => `<li class="ml extra"><button class="ml-main tap" data-act="extra-info" data-k="${k}" data-id="${x.id}">${x.thumb ? `<span class="fc photo" style="--p:1"><img src="${x.thumb}" alt=""></span>` : `<span class="fc" style="--h:30;--p:1"><span class="fc-in">${x.e}</span></span>`}<span class="ml-t"><b>📸 ${slotLabel[x.slot] || 'Snack'}${x.replaces ? '' : ' <span class="flag flag-small">extra</span>'}</b><span>${esc(x.name)}</span><small>${fmtInt(x.kcal)} kcal · ${x.g} g · ${new Date(x.t).toTimeString().slice(0, 5)}</small></span></button><button class="ml-del tap" data-act="extra-del" data-k="${k}" data-id="${x.id}" aria-label="Löschen">${ico('close')}</button></li>`).join('')}</ul>
+      <button class="photo-cta tap" data-act="foodcam" data-k="${k}"><span class="pc-ico">${ico('camera')}</span><span><b>Was anderes gegessen?</b><small>Foto machen – die KI erkennt’s und zählt die Kalorien</small></span>${ico('chev')}</button></article>
 
     ${a ? `
     <article class="card cook rise">
@@ -931,12 +935,15 @@ export function weight() {
 export function quickSheetHTML() {
   const t = E.todayKey(), act = SP.plannedActivity(t);
   const tiles = [
+    ['camera', 'foodcam', 'Essen fotografieren'],
     ['scan', 'scan', 'Bon scannen'],
     ['star', 'rate', 'Essen bewerten'],
     act && !act.done ? ['run', 'go', act.kind === 'run' ? 'Lauf starten' : 'Workout starten', act.kind === 'run' ? '#/timer/run/' + t : '#/timer/workout/' + act.id + '?d=' + t] : ['dumbbell', 'go', 'Mini-Workout', '#/workout/' + SP.workoutFor(t) + '?d=' + t],
     ['drop', 'water', '+ Glas Wasser'],
     ['scale', 'go', 'Gewicht', '#/weight'],
-    ['book', 'go', 'Rezepte', '#/rezepte']
+    ['book', 'go', 'Rezepte', '#/rezepte'],
+    ['edit', 'foodsearch', 'Essen suchen'],
+    ['cart', 'go', 'Einkauf', '#/einkauf']
   ];
   return `<h2 class="sh-t">Schnell erledigt</h2><div class="qgrid">${tiles.map(([icon, kind, label, arg]) => `<button class="qt tap" data-q="${kind}" ${arg ? 'data-arg="' + arg + '"' : ''}><span class="qt-i">${ico(icon)}</span><b>${label}</b></button>`).join('')}</div>`;
 }
@@ -982,3 +989,62 @@ export function onboarding() {
 }
 
 function notFound() { return { html: `<div class="page detail">${dhead('Hoppla')}<p class="empty">Nicht gefunden.</p></div>` }; }
+
+/* =========================================================
+   ESSEN FOTOGRAFIEREN – lokale KI
+   ========================================================= */
+const SIZES = [[0.75, 'Klein'], [1, 'Normal'], [1.5, 'Groß'], [2, 'Riesig']];
+const SLOT_CH = [['f', 'Frühstück'], ['m', 'Mittag'], ['s', 'Jause'], ['a', 'Abend']];
+export function foto() {
+  const F = ui.food;
+  if (!F) return { html: `<div class="page detail">${dhead('Essen')}<p class="empty">Kein Foto.</p></div>` };
+  if (F.state === 'scan') return { html: `
+  <div class="page fscan">
+    <div class="fs-img">${F.img ? `<img src="${F.img}" alt="">` : ''}<div class="fs-grid"></div><div class="beam"></div><span class="fs-c tl"></span><span class="fs-c tr"></span><span class="fs-c bl"></span><span class="fs-c br"></span></div>
+    <div class="fs-msg"><span class="fs-brain">🧠</span><b>KI erkennt dein Essen …</b><small>läuft offline auf deinem Handy</small><span class="dots"><i></i><i></i><i></i></span></div>
+  </div>`, cls: 'dark-screen' };
+  if (F.state === 'pick' || F.state === 'error' || !F.sel) {
+    const res = F.q ? FA.search(F.q) : [];
+    return { html: `
+  <div class="page detail">
+    ${dhead('Essen eintragen', F.state === 'error' ? 'Foto nicht erkannt' : 'suchen')}
+    ${F.state === 'error' ? `<article class="card warn rise">${ico('info')}<div><b>Das hat nicht geklappt</b><p>${esc(F.error || 'Auf dem Foto wurde kein Essen erkannt.')}</p><button class="btn sm tap" data-act="foodcam">${ico('camera')}Nochmal fotografieren</button></div></article>` : ''}
+    ${!isNative && F.state !== 'error' ? `<article class="card rise"><p class="lede">Im Browser gibt’s keine Kamera-KI – in der App einfach auf das 📸 in der Mitte tippen.</p><button class="btn ghost wide tap" data-act="food-demo">🧪 Beispiel-Foto testen</button></article>` : ''}
+    <div class="fsearch rise"><span>${ico('edit')}</span><input id="food-q" type="search" placeholder="z. B. Schnitzel, Semmel, Banane, Cola …" value="${esc(F.q || '')}" autocomplete="off"></div>
+    ${res.length ? `<div class="flist rise">${res.map(i => `<button class="fl tap" data-act="food-choose" data-key="${esc(i.key)}"><span class="fl-e">${i.e}</span><span><b>${esc(i.name)}</b><small>${fmtInt(i.n[0])} kcal/100 g · Portion ≈ ${i.g} g${i.src === 'avg' ? ' · Durchschnitt' : ''}</small></span>${ico('chev')}</button>`).join('')}</div>` : F.q ? '<p class="empty">Nix gefunden – probier ein anderes Wort.</p>' : `
+    <h2 class="sec rise">Schnell auswählen</h2><div class="fquick rise">${[0, 6, 14, 22, 23, 30, 32, 34, 35, 51, 54, 61].map(i => FA.infoEveryday(i)).map(i => `<button class="fq tap" data-act="food-choose" data-key="${i.key}"><span>${i.e}</span><b>${esc(i.name)}</b></button>`).join('')}</div>`}
+  </div>` };
+  }
+  const info = F.sel, nn = FA.nutr(info, F.size);
+  const T = E.targets(), k = F.k || E.todayKey(), tot = E.dayTotals(k), burned = SP.burned(k);
+  const leftAfter = T.kcal + burned - tot.eaten - nn.kcal;
+  const p = S.plan[k], planned = p && DISHES[p[F.slot]];
+  const conf = F.conf != null ? Math.round(F.conf * 100) : null;
+  const vd = FA.verdict(info, nn);
+  const unitG = /ml/.test(info.desc || '') ? 'ml' : 'g';
+  return { html: `
+  <div class="page detail no-head food-res">
+    <section class="fr-hero">${F.img ? `<img src="${F.img}" alt="">` : `<div class="fr-emo"><span>${info.e}</span></div>`}<button class="iconbtn glass-btn tap" data-act="back" aria-label="Zurück">${ico('back')}</button>
+      <div class="fr-over">${conf != null ? `<span class="conf ${conf >= 50 ? 'hi' : conf >= 20 ? 'mid' : 'lo'}">🧠 ${conf} % sicher</span>` : '<span class="conf hi">✓ ausgewählt</span>'}<h1>${info.e} ${esc(info.name)}</h1><p>${[info.label && info.label !== info.name ? 'KI: „' + esc(info.label) + '“' : '', info.src !== 'exact' ? esc(info.cat) : '', info.src === 'avg' ? 'Werte geschätzt' : ''].filter(Boolean).join(' · ')}</p></div></section>
+    <section class="d-sheet">
+      <div class="fr-kcal rise"><b data-count="${nn.kcal}">0</b><span>kcal<small>für ≈ ${nn.g} ${unitG}</small></span></div>
+      <div class="fr-mac rise">
+        <div class="m-prot"><small>Eiweiß</small><b>${nn.prot} g</b><span class="mbar"><i data-w="${pct(nn.prot, T.prot)}"></i></span><em>${Math.round(nn.prot / T.prot * 100)} % vom Tag</em></div>
+        <div class="m-kh"><small>Kohlenhydrate</small><b>${nn.kh} g</b><span class="mbar"><i data-w="${pct(nn.kh, T.kh)}"></i></span><em>${Math.round(nn.kh / T.kh * 100)} % vom Tag</em></div>
+        <div class="m-fat"><small>Fett</small><b>${nn.fat} g</b><span class="mbar"><i data-w="${pct(nn.fat, T.fat)}"></i></span><em>${Math.round(nn.fat / T.fat * 100)} % vom Tag</em></div>
+      </div>
+      ${vd.length ? `<div class="vd rise">${vd.map(([e, t, c]) => `<span class="vchip ${c}">${e} ${t}</span>`).join('')}</div>` : ''}
+      <h3 class="sec sm rise">Wie viel?</h3>
+      <div class="sizes rise">${SIZES.map(([f, l]) => `<button class="sz tap${F.size === f ? ' on' : ''}" data-act="food-size" data-v="${f}"><b>${l}</b><small>${Math.round(info.g * f)} ${unitG}</small></button>`).join('')}</div>
+      ${F.guesses && F.guesses.length > 1 ? `<h3 class="sec sm rise">Oder ist es …</h3><div class="alts rise">${F.guesses.filter(g => g.key !== info.key).slice(0, 4).map(g => `<button class="chip tap" data-act="food-alt" data-key="${esc(g.key)}">${g.e} ${esc(g.name)} <small>${Math.round(g.conf * 100)} %</small></button>`).join('')}<button class="chip tap" data-act="food-find">${ico('edit')}Suchen</button></div>` : `<div class="alts rise"><button class="chip tap" data-act="food-find">${ico('edit')}Was anderes suchen</button></div>`}
+      <article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Was ist das?</h3><p class="lede">${esc(info.desc)}</p>${info.src === 'avg' ? '<p class="fine">Dieses Gericht kennt die App nicht genau – die Werte sind ein Durchschnitt. Über „Suchen“ kannst du was Genaueres wählen.</p>' : info.src === 'cat' ? '<p class="fine">Werte typisch für ' + esc(info.cat) + ' – je nach Rezept ±20 %.</p>' : ''}
+        <div class="nutrow sm"><span><b>${info.n[0]}</b><small>kcal/100 ${unitG}</small></span><span class="m-prot"><b>${dec(info.n[1], 1)} g</b><small>Eiweiß</small></span><span class="m-kh"><b>${dec(info.n[2], 1)} g</b><small>KH</small></span><span class="m-fat"><b>${dec(info.n[3], 1)} g</b><small>Fett</small></span></div></article>
+      <article class="card rise"><h3 class="c-h">${ico('book', 'xs')} Eintragen als</h3>
+        <div class="chips">${SLOT_CH.map(([v, l]) => `<button class="chip tap${F.slot === v ? ' on' : ''}" data-act="food-slot" data-v="${v}">${l}</button>`).join('')}</div>
+        ${planned && !(S.log[k] && S.log[k].eaten && S.log[k].eaten[F.slot]) ? `<label class="switch-row tap"><span>Statt Plan: ${esc(planned.name)}</span><input type="checkbox" data-act="food-replace"${F.replaces ? ' checked' : ''}><i class="sw"></i></label><p class="fine">${F.replaces ? 'Das geplante Gericht zählt dann nicht mehr.' : 'Wird zusätzlich zum Plan gezählt.'}</p>` : ''}
+        <div class="left-after ${leftAfter < 0 ? 'over' : ''}"><span>Danach heute noch übrig</span><b>${leftAfter < 0 ? '−' + fmtInt(-leftAfter) + ' kcal (drüber)' : fmtInt(leftAfter) + ' kcal'}</b></div>
+      </article>
+      <div class="sticky-save"><button class="btn ghost tap" data-act="foodcam">${ico('camera')}Nochmal</button><button class="btn big tap" data-act="food-save">${ico('check')}Eintragen</button></div>
+    </section>
+  </div>` };
+}

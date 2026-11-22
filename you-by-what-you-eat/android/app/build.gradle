@@ -7,12 +7,12 @@ android {
         applicationId "at.youbywhatyoueat.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 3
+        versionName "1.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            // Handys: arm64 + ältere arm; x86_64 nur für Emulatoren
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            // Handys: arm64 + ältere arm (kein x86_64-Emulator nötig)
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -30,6 +30,9 @@ android {
                 keyPassword System.getenv("YBWYE_KEYSTORE_PASSWORD")
             }
         }
+    }
+    androidResources {
+        noCompress += ['tflite']        // Modell direkt aus der APK laden
     }
     buildTypes {
         release {
@@ -60,6 +63,8 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
     // Kassenbon-Texterkennung, Modell gebündelt (funktioniert ohne Internet)
     implementation 'com.google.mlkit:text-recognition:16.0.1'
+    // Essens-Erkennung per Foto (eigenes TFLite-Modell, offline)
+    implementation 'com.google.mlkit:image-labeling-custom:17.0.3'
 }
 
 apply from: 'capacitor.build.gradle'

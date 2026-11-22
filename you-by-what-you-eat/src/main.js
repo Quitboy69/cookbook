@@ -7,7 +7,9 @@ import * as V from './screens.js';
 import { ui } from './screens.js';
 import { $, $$, go, back, refresh, setRenderer, initRouter, current, toast, confetti, sheet, ico, esc, ring } from './ui.js';
 import { analyse, DEMO } from './receipt.js';
-import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues } from './native.js';
+import * as FA from './foodai.js';
+import { LABELS } from './foodkb.js';
+import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, classifyFood, makeThumb } from './native.js';
 
 let notifPerm = 'unknown';
 if (!S.profile.runStart) { S.profile.runStart = E.todayKey(); save(); }
@@ -40,6 +42,7 @@ setRenderer(route => {
     case 'ratings': return V.ratings();
     case 'trinken': return V.trinken();
     case 'weight': return V.weight();
+    case 'foto': return V.foto();
     case 'onboarding': return V.onboarding();
     default: return V.heute();
   }
@@ -328,7 +331,77 @@ function onNotifAction(actionId, extra) {
 /* =========================================================
    AKTIONEN
    ========================================================= */
+/* =========================================================
+   ESSEN FOTOGRAFIEREN – Foto → lokale KI → Ergebnis → eintragen
+   ========================================================= */
+function foodReset(k) {
+  const slot = FA.slotNow(), t = k || E.todayKey(), L = S.log[t] || {};
+  ui.food = { state: 'scan', k: t, size: 1, slot, replaces: !!(S.plan[t] && !(L.eaten && L.eaten[slot])), guesses: [], sel: null };
+}
+async function startFoodCam(k) {
+  haptic.med();
+  if (!isNative) { foodReset(k); ui.food.state = 'pick'; go('#/foto'); return; }
+  let photo;
+  try { photo = await takeReceiptPhoto('camera'); }
+  catch (e) { if (!/cancel/i.test(String(e && e.message || e))) toast('Kamera: ' + esc(e.message || e), 'toast-warn'); return; }
+  foodReset(k);
+  ui.food.img = photo.webPath;
+  if (current().startsWith('#/foto')) refresh(false); else go('#/foto');
+  const t0 = Date.now();
+  try {
+    const [res, thumb] = await Promise.all([classifyFood(photo.path), makeThumb(photo.webPath)]);
+    ui.food.thumb = thumb;
+    const g = FA.rank(res.labels);
+    await new Promise(r => setTimeout(r, Math.max(0, 1100 - (Date.now() - t0))));
+    if (!g.length) { ui.food.state = 'error'; ui.food.error = 'Auf dem Foto wurde kein Essen erkannt. Teller von oben, gutes Licht – oder unten suchen.'; refresh(false); return; }
+    Object.assign(ui.food, { state: 'done', guesses: g, sel: g[0], conf: g[0].conf });
+    haptic.ok(); refresh(false);
+  } catch (e) { ui.food.state = 'error'; ui.food.error = String(e && e.message || e); refresh(false); }
+}
+function foodSave() {
+  const F = ui.food; if (!F || !F.sel) return;
+  const nn = FA.nutr(F.sel, F.size);
+  const p = S.plan[F.k];
+  const replaces = !!(F.replaces && p && p[F.slot]);
+  FA.logExtra(F.k, { name: F.sel.name, e: F.sel.e, key: F.sel.key, g: nn.g, kcal: nn.kcal, prot: nn.prot, kh: nn.kh, fat: nn.fat, slot: F.slot, replaces, thumb: F.thumb || null, conf: F.conf ?? null });
+  // alte Vorschaubilder (> 21 Tage) aufräumen
+  for (const [d, list] of Object.entries(S.extra)) if (E.daysBetween(d, E.todayKey()) > 21) list.forEach(x => { x.thumb = null; });
+  save(true); haptic.ok();
+  const savedName = F.sel.name;
+  ui.day = F.k; ui.food = null;
+  go('#/heute');
+  setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 36); toast('Eingetragen: <b>' + esc(savedName) + '</b> · ' + nn.kcal + ' kcal ✓'); }, 380);
+}
+
 const A = {
+  foodcam(el) { startFoodCam(el && el.dataset && el.dataset.k); },
+  foodsearch() { foodReset(); ui.food.state = 'pick'; go('#/foto'); },
+  'food-demo'() {
+    const pick = n => LABELS.indexOf(n);
+    Object.assign(ui.food, { state: 'scan', img: null });
+    refresh(false);
+    setTimeout(() => {
+      const g = FA.rank([{ index: pick('Schnitzel'), conf: 0.58 }, { index: pick('Cordon bleu'), conf: 0.16 }, { index: pick('Chicken fried steak'), conf: 0.09 }, { index: pick('Fried chicken'), conf: 0.05 }]);
+      Object.assign(ui.food, { state: 'done', guesses: g, sel: g[0], conf: g[0].conf }); refresh(false);
+    }, 1200);
+  },
+  'food-choose'(el) { const info = FA.fromKey(el.dataset.key); if (!info) return; haptic.tap(); Object.assign(ui.food, { state: 'done', sel: info, conf: null, size: 1 }); refresh(false); },
+  'food-alt'(el) { const g = ui.food.guesses.find(x => x.key === el.dataset.key); if (!g) return; haptic.tap(); Object.assign(ui.food, { sel: g, conf: g.conf, size: 1 }); refresh(); },
+  'food-find'() { haptic.tap(); Object.assign(ui.food, { state: 'pick', sel: null, q: '' }); refresh(false); setTimeout(() => { const q = $('#food-q'); if (q) q.focus(); }, 80); },
+  'food-size'(el) { ui.food.size = +el.dataset.v; haptic.tap(); refresh(); },
+  'food-slot'(el) { const F = ui.food; F.slot = el.dataset.v; const L = S.log[F.k] || {}; F.replaces = !!(S.plan[F.k] && !(L.eaten && L.eaten[F.slot])); haptic.tap(); refresh(); },
+  'food-save'() { foodSave(); },
+  'extra-del'(el) {
+    const k = el.dataset.k, id = el.dataset.id;
+    const row = el.closest('.ml'); if (row) row.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(40px)' }], { duration: 220 });
+    setTimeout(() => { FA.removeExtra(k, id); haptic.tap(); refresh(); toast('Gelöscht.'); }, 200);
+  },
+  'extra-info'(el) {
+    const x = FA.extrasOf(el.dataset.k).find(e => e.id === el.dataset.id); if (!x) return;
+    sheet(`<div class="learn-sum">${x.thumb ? `<img class="ei-img" src="${x.thumb}" alt="">` : `<span class="ls-emo">${x.e}</span>`}<h2 class="sh-t">${esc(x.name)}</h2><p class="sh-sub">${x.g} g · ${new Date(x.t).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}${x.conf != null ? ' · KI ' + Math.round(x.conf * 100) + ' % sicher' : ''}</p>
+      <div class="ls-tiles q4"><div><b>${x.kcal}</b><small>kcal</small></div><div class="m-prot"><b>${x.prot} g</b><small>Eiweiß</small></div><div class="m-kh"><b>${x.kh} g</b><small>KH</small></div><div class="m-fat"><b>${x.fat} g</b><small>Fett</small></div></div>
+      <button class="btn wide tap" data-close>Schließen</button></div>`);
+  },
   back() { haptic.tap(); if (current().startsWith('#/timer')) { confirmStopTimer(); return; } back(); },
   day(el) {
     haptic.tap(); ui.day = el.dataset.k;
@@ -398,6 +471,8 @@ const A = {
         haptic.tap(); close(); const t = E.todayKey();
         setTimeout(() => {
           if (q.dataset.q === 'scan') startScan('camera');
+          else if (q.dataset.q === 'foodcam') startFoodCam();
+          else if (q.dataset.q === 'foodsearch') A.foodsearch();
           else if (q.dataset.q === 'rate') { ui.day = t; if (!current().startsWith('#/heute')) go('#/heute'); setTimeout(() => openRate(t), 300); }
           else if (q.dataset.q === 'water') { const L = logOf(t); L.water = (L.water || 0) + 1; save(); toast('💧 ' + E.lit(L.water * 0.25) + ' L heute'); refresh(); }
           else if (q.dataset.arg) go(q.dataset.arg);
@@ -564,6 +639,16 @@ document.addEventListener('click', e => {
   if (g && !g.closest('.sheet')) { e.preventDefault(); haptic.tap(); go(g.dataset.go); }
   else if (g) { window.__sheetClose && window.__sheetClose(); go(g.dataset.go); }
 });
+document.addEventListener('input', e => {
+  if (e.target.id === 'food-q' && ui.food) {
+    ui.food.q = e.target.value;
+    clearTimeout(window.__fq);
+    window.__fq = setTimeout(() => {
+      const pos = e.target.selectionStart; refresh();
+      const q = $('#food-q'); if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (x) { /* egal */ } }
+    }, 220);
+  }
+});
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.p) {
@@ -577,6 +662,7 @@ document.addEventListener('change', e => {
     if (k === 'runTime') scheduleAll();
     if (current().includes('onboarding')) setTimeout(() => refresh(false), 0);
   }
+  if (el.dataset.act === 'food-replace' && ui.food) { ui.food.replaces = el.checked; haptic.tap(); refresh(); return; }
   if (el.dataset.nt) { S.notif[el.dataset.nt].on = el.checked; save(); haptic.tap(); scheduleAll(); refresh(); }
   if (el.dataset.n) { const key = el.dataset.n; const rest = (S.notif[key].t || '').split(',').slice(1); S.notif[key].t = [el.value, ...rest].join(','); save(); scheduleAll(); }
   if (el.dataset.f && el.closest('.rv-item')) { readReviewInputs(); if (el.dataset.f === 'ing') el.closest('.rv-item').classList.toggle('matched', !!el.value); }

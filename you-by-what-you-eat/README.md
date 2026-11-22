@@ -6,6 +6,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.1:** neues Design nach dem Vorbild moderner Fitness- und Ernährungs-Apps, Laufplan mit Erinnerungen und Mini-Workouts als Ersatz, wenn du nicht laufen willst.
 
+**Version 1.2:** Essen fotografieren. Eine lokale KI erkennt das Gericht offline am Handy und zeigt Kalorien, Eiweiß, Kohlenhydrate und Fett.
+
 ## Was die App kann
 
 | Bereich | Funktion |
@@ -14,6 +16,7 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 | **Kleines Frühstück** | 9 Varianten mit 230–440 kcal, weil in der Früh wenig reingeht (Smoothie, Kakao, Mini-Porridge …). Der Rest wird auf Mittag, Jause und Abend verteilt. |
 | **Abwechslung** | 16 Abendtöpfe, 6 Jausen und 9 Frühstücke. Ein Abendgericht kommt frühestens nach 8 Tagen wieder. Zwei Tage hintereinander gibt es nie dieselbe Beilage oder dasselbe Fleisch. Neue Gerichte werden bevorzugt. |
 | **Sterne 0–5** | Nach dem Essen kommt eine Benachrichtigung mit der Frage „Schon gegessen? Wie war’s?“. Bekommt ein Gericht **2× oder öfter unter 3 Sterne**, wird es automatisch aussortiert und im Plan ersetzt. Unter „Meine Bewertungen“ holst du es wieder zurück. |
+| **📸 Essen fotografieren** | Mittlerer Knopf → Foto → die lokale KI (Google AIY Food, ≈ 2.000 Gerichte, offline) erkennt das Essen. Du siehst Kalorien, Eiweiß, Kohlenhydrate und Fett, eine kurze Erklärung („Was ist das?“) und eine Einschätzung („Viel Eiweiß“, „Fettreich“ …). Portion wählen (Klein bis Riesig), bei Bedarf eine andere Vermutung oder die Suche nehmen, dann „Eintragen“. Das Essen zählt bei „Gegessen“ und kann eine geplante Mahlzeit ersetzen. |
 | **Kassenbon** | Foto machen. Die Texterkennung läuft **offline am Handy** (Google ML Kit) und erkennt Markt, Datum, Artikel, Mengen und Rabatte („Aktion −25 %“, jö-Bonus). Danach prüfst du die Liste kurz und speicherst. |
 | **Preise & Aktionen lernen** | Die App merkt sich pro Markt den Normalpreis und wann etwas in Aktion ist. Nach ein paar Bons schätzt sie auch den Aktions-Rhythmus. Gerichte mit Zutaten, die gerade in Aktion sind, kommen eher auf den Plan. |
 | **Einkauf** | Wocheneinkauf im Kassazettel-Stil mit Häkchen. Der Markt-Vergleich zeigt, wo der Einkauf am günstigsten ist. |
@@ -26,9 +29,9 @@ Alle Daten bleiben auf dem Handy.
 
 ## Installieren
 
-1. `YouByWhatYouEat-1.1.0.apk` aufs Android-Handy laden.
+1. `YouByWhatYouEat-1.2.0.apk` aufs Android-Handy laden.
 2. Antippen. Fragt Android nach „Unbekannte Apps installieren“, für den Browser oder Dateimanager erlauben.
-3. App öffnen und Benachrichtigungen erlauben. Ein Update auf 1.1 installiert sich über 1.0 drüber, die Daten bleiben erhalten.
+3. App öffnen und Benachrichtigungen erlauben. Updates installieren sich über die alte Version drüber, die Daten bleiben erhalten.
 
 ## Selbst bauen
 
@@ -36,6 +39,7 @@ Voraussetzungen: Node 22, JDK 21, Android SDK (Plattform 36).
 
 ```bash
 npm install
+./scripts/get-food-model.sh   # Foto-KI-Modell (21 MB) laden
 npm run build:web          # src/ → www/app.js (esbuild)
 npx cap sync android
 cd android && ./gradlew assembleRelease
@@ -48,7 +52,9 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - `src/data.js` – Zutaten (Basispreise, Kassenbon-Stichwörter), Gerichte, Märkte
 - `src/sport.js` – Laufplan, Pulszonen, Mini-Workouts, Übungsanleitungen, Timer-Abläufe
 - `src/engine.js` – Kalorienbedarf (Mifflin-St Jeor), Nährwerte aus Zutaten, gelernte Preise, Plan mit Abwechslung, Sterne-Logik, Einkaufsliste
+- `src/foodai.js`, `src/foodkb.js` – Foto-KI: Ergebnis des Modells → Gericht, Nährwerte, Einschätzung, Suche
 - `src/receipt.js` – Bon-Zeilen aus der Texterkennung zusammensetzen und auswerten
 - `src/screens.js`, `src/ui.js`, `www/styles.css` – Oberfläche und Animationen
 - `src/native.js` – Kamera, Benachrichtigungen, Vibration, Zurück-Taste
 - `android/app/src/main/java/.../ReceiptOcrPlugin.java` – Texterkennung (ML Kit)
+- `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung (ML Kit + AIY Food V1, Apache 2.0)
