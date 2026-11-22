@@ -26,14 +26,15 @@ export const rand = seed => { let t = hash(seed) + 0x6D2B79F5; t = Math.imul(t ^
 
 /* ---------- Nährwerte aus den Zutaten berechnen ---------- */
 export function nutOf(id) {
-  const d = DISHES[id], t = [0, 0, 0, 0];
+  const d = DISHES[id], t = [0, 0, 0, 0, 0, 0, 0, 0];       // kcal, Eiweiß, KH, Zucker, Fett, ges. Fett, Ballaststoffe, Salz
   for (const [ing, amt] of Object.entries(d.need)) {
     const g = ING[ing]; if (!g || !g.n) continue;
     const f = g.unit === 'stk' ? amt : amt * 10;        // je Stück bzw. je 100 g/ml
-    for (let i = 0; i < 4; i++) t[i] += g.n[i] * f;
+    for (let i = 0; i < 8; i++) t[i] += (g.n[i] || 0) * f;
   }
   const div = d.slot === 'a' ? 6 : 1;
-  return { kcal: Math.round(t[0] / div / 5) * 5, prot: Math.round(t[1] / div), kh: Math.round(t[2] / div), fat: Math.round(t[3] / div) };
+  const r1 = v => Math.round(v / div * 10) / 10;
+  return { kcal: Math.round(t[0] / div / 5) * 5, prot: Math.round(t[1] / div), kh: Math.round(t[2] / div), sugar: Math.round(t[3] / div), fat: Math.round(t[4] / div), sat: r1(t[5]), fiber: r1(t[6]), salt: Math.round(t[7] / div * 100) / 100 };
 }
 for (const id of Object.keys(DISHES)) Object.assign(DISHES[id], nutOf(id));
 
@@ -379,14 +380,14 @@ export function shuffleFuture() {
 /* Tageswerte pro Person */
 export function dayTotals(k) {
   const p = S.plan[k]; if (!p) return { kcal: 0, prot: 0, eur: 0 };
-  const t = { kcal: 0, prot: 0, kh: 0, fat: 0, eur: 0, eaten: 0, eatenProt: 0, eatenKh: 0, eatenFat: 0 };
+  const t = { kcal: 0, prot: 0, kh: 0, fat: 0, sugar: 0, eur: 0, eaten: 0, eatenProt: 0, eatenKh: 0, eatenFat: 0, eatenSugar: 0, eatenSalt: 0 };
   const log = S.log[k] || {};
   for (const sl of ['f', 'm', 's', 'a']) {
     const d = DISHES[p[sl]]; if (!d) continue;
-    t.kcal += d.kcal; t.prot += d.prot; t.kh += d.kh; t.fat += d.fat; t.eur += dishCost(p[sl]).portion;
-    if (log.eaten && log.eaten[sl] && !(log.skip && log.skip[sl])) { t.eaten += d.kcal; t.eatenProt += d.prot; t.eatenKh += d.kh; t.eatenFat += d.fat; }
+    t.kcal += d.kcal; t.prot += d.prot; t.kh += d.kh; t.fat += d.fat; t.sugar += d.sugar || 0; t.eur += dishCost(p[sl]).portion;
+    if (log.eaten && log.eaten[sl] && !(log.skip && log.skip[sl])) { t.eaten += d.kcal; t.eatenProt += d.prot; t.eatenKh += d.kh; t.eatenFat += d.fat; t.eatenSugar += d.sugar || 0; t.eatenSalt += d.salt || 0; }
   }
-  for (const x of (S.extra && S.extra[k]) || []) { t.eaten += x.kcal; t.eatenProt += x.prot; t.eatenKh += x.kh; t.eatenFat += x.fat; t.extra = (t.extra || 0) + x.kcal; }
+  for (const x of (S.extra && S.extra[k]) || []) { t.eaten += x.kcal; t.eatenProt += x.prot; t.eatenKh += x.kh; t.eatenFat += x.fat; t.eatenSugar += x.sugar || 0; t.eatenSalt += x.salt || 0; t.extra = (t.extra || 0) + x.kcal; }
   return t;
 }
 export function varietyScore(fromKey, n = 7) {

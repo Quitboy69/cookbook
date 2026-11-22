@@ -47,7 +47,7 @@ export async function takeReceiptPhoto(source) {
 }
 export async function ocr(path) { return ReceiptOcr.recognize({ path }); }
 /* Essen auf dem Foto erkennen – lokale KI (AIY Food, offline) */
-export async function classifyFood(path) { return FoodAi.classify({ path }); }
+export async function analyzeFood(path) { return FoodAi.analyze({ path }); }
 /* Kleines Vorschaubild für die Tagesliste (≈ 5–10 KB) */
 export function makeThumb(src, size = 160) {
   return new Promise(res => {

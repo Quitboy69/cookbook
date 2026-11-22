@@ -9,7 +9,9 @@ import { $, $$, go, back, refresh, setRenderer, initRouter, current, toast, conf
 import { analyse, DEMO } from './receipt.js';
 import * as FA from './foodai.js';
 import { LABELS } from './foodkb.js';
-import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, classifyFood, makeThumb } from './native.js';
+import * as N from './nutri.js';
+import { toN8 } from './labelparse.js';
+import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb } from './native.js';
 
 let notifPerm = 'unknown';
 if (!S.profile.runStart) { S.profile.runStart = E.todayKey(); save(); }
@@ -332,65 +334,157 @@ function onNotifAction(actionId, extra) {
    AKTIONEN
    ========================================================= */
 /* =========================================================
-   ESSEN FOTOGRAFIEREN – Foto → lokale KI → Ergebnis → eintragen
+   ESSEN FOTOGRAFIEREN – Foto → Barcode / Text / Tabelle / KI → Ergebnis → eintragen
    ========================================================= */
 function foodReset(k) {
   const slot = FA.slotNow(), t = k || E.todayKey(), L = S.log[t] || {};
-  ui.food = { state: 'scan', k: t, size: 1, slot, replaces: !!(S.plan[t] && !(L.eaten && L.eaten[slot])), guesses: [], sel: null };
+  ui.food = { state: 'scan', k: t, grams: 0, slot, replaces: !!(S.plan[t] && !(L.eaten && L.eaten[slot])), guesses: [], sel: null, q: '', results: [] };
 }
-async function startFoodCam(k) {
+const tableItem = (tab, name = 'Eigenes Produkt') => ({ k: 'c', key: 't:' + Date.now().toString(36), name, brand: '', e: '🏷️', cat: 'Aus Nährwerttabelle', n: toN8(tab.per100), g: tab.servG || (tab.ml ? 250 : 30), serving: tab.servG || 0, pack: 0, ml: !!tab.ml, ns: '', u: 'Portion', src: 'label', tmp: true, desc: 'Von der Packung abfotografiert.' });
+
+/* Auswertung der nativen Analyse (oder eines Demo-Ergebnisses im Browser) */
+async function applyAnalysis(res, mode, thumb) {
+  const F = ui.food;
+  F.thumb = thumb || F.thumb;
+  const r = await FA.buildCandidates(res);
+  F.packHint = r.packHint; F.unknownCode = r.unknownCode || (F.code || ''); F.table = r.table; F.barcode = r.barcode;
+  const cands = r.cands.slice();
+  if (r.table) {
+    const th = r.textHits[0], t = tableItem(r.table, th && th.score >= 1.2 ? th.name : 'Eigenes Produkt');
+    if (th && th.score >= 1.2) t.brand = th.brand;
+    cands.unshift({ ...t, conf: 1, score: r.barcode ? 40 : 90, via: 'tabelle' });
+  }
+  cands.sort((a, b) => b.score - a.score);
+  if (mode === 'label' && !r.table) {
+    Object.assign(F, { state: 'label', form: null, formName: '', formBrand: '' });
+    F.table = { per100: {}, hits: 0 };
+    const rows = (res.lines || []).map(l => l.text);
+    return;
+  }
+  if (!cands.length) {
+    F.state = 'error';
+    F.error = r.unknownCode ? 'Dieses Produkt kennt die App noch nicht und online war nichts zu finden. Fotografiere die Nährwerttabelle – dann merkt sie sich das Produkt samt Barcode.' : 'Auf dem Foto wurde nichts erkannt. Gutes Licht, Teller von oben – oder Barcode/Tabelle fotografieren, oder unten suchen.';
+    return;
+  }
+  F.guesses = cands; F.sel = cands[0]; F.conf = cands[0].conf; F.grams = cands[0].g; F.state = 'done';
+  F.firstGuess = cands[0];
+}
+async function startFoodCam(k, mode = 'food', src = 'camera', code = '') {
   haptic.med();
-  if (!isNative) { foodReset(k); ui.food.state = 'pick'; go('#/foto'); return; }
+  if (!isNative) { foodReset(k); ui.food.state = 'pick'; ui.food.code = code; go('#/foto'); return; }
   let photo;
-  try { photo = await takeReceiptPhoto('camera'); }
+  try { photo = await takeReceiptPhoto(src); }
   catch (e) { if (!/cancel/i.test(String(e && e.message || e))) toast('Kamera: ' + esc(e.message || e), 'toast-warn'); return; }
+  const keepQ = ui.food && current().startsWith('#/foto') ? ui.food.q : '';
   foodReset(k);
-  ui.food.img = photo.webPath;
+  Object.assign(ui.food, { img: photo.webPath, mode, code, q: keepQ });
   if (current().startsWith('#/foto')) refresh(false); else go('#/foto');
   const t0 = Date.now();
   try {
-    const [res, thumb] = await Promise.all([classifyFood(photo.path), makeThumb(photo.webPath)]);
-    ui.food.thumb = thumb;
-    const g = FA.rank(res.labels);
+    const [res, thumb] = await Promise.all([analyzeFood(photo.path), makeThumb(photo.webPath)]);
+    await applyAnalysis(res, mode, thumb);
     await new Promise(r => setTimeout(r, Math.max(0, 1100 - (Date.now() - t0))));
-    if (!g.length) { ui.food.state = 'error'; ui.food.error = 'Auf dem Foto wurde kein Essen erkannt. Teller von oben, gutes Licht – oder unten suchen.'; refresh(false); return; }
-    Object.assign(ui.food, { state: 'done', guesses: g, sel: g[0], conf: g[0].conf });
     haptic.ok(); refresh(false);
   } catch (e) { ui.food.state = 'error'; ui.food.error = String(e && e.message || e); refresh(false); }
 }
+/* Beispiele für den Browser: laufen durch dieselbe Auswertung wie ein echtes Foto */
+const DEMOS = {
+  haribo: { lines: [{ text: 'HARIBO', x: 40, y: 40, w: 300, h: 60 }, { text: 'Goldbären', x: 40, y: 120, w: 300, h: 50 }, { text: 'Fruchtgummi', x: 40, y: 190, w: 300, h: 40 }, { text: '200 g', x: 40, y: 250, w: 100, h: 30 }], labels: [], inet: [{ index: 899, conf: 0.4 }] },
+  table: { lines: ['Durchschnittliche Nährwerte pro 100 g', 'Brennwert 1456 kJ / 343 kcal', 'Fett 0,5 g', 'davon gesättigte Fettsäuren 0,1 g', 'Kohlenhydrate 77 g', 'davon Zucker 46 g', 'Eiweiß 6,9 g', 'Salz 0,07 g'].map((t, i) => ({ text: t, x: 40, y: 40 + i * 50, w: 400, h: 30 })), labels: [], inet: [] },
+  schnitzel: { lines: [], labels: [{ index: LABELS.indexOf('Schnitzel'), conf: 0.31 }, { index: LABELS.indexOf('Cordon bleu'), conf: 0.12 }, { index: LABELS.indexOf('Chicken fried steak'), conf: 0.07 }], inet: [{ index: 924, conf: 0.5 }] },
+  banana: { lines: [], labels: [{ index: LABELS.indexOf('Banoffee pie'), conf: 0.05 }], inet: [{ index: 955, conf: 0.82 }, { index: 951, conf: 0.04 }] }
+};
+async function demoFood(kind) {
+  foodReset(); const F = ui.food;
+  if (!current().startsWith('#/foto')) go('#/foto'); else refresh(false);
+  await new Promise(r => setTimeout(r, 900));
+  await applyAnalysis({ barcodes: [], text: '', ...DEMOS[kind] }, kind === 'table' ? 'label' : 'food', null);
+  refresh(false);
+}
 function foodSave() {
   const F = ui.food; if (!F || !F.sel) return;
-  const nn = FA.nutr(F.sel, F.size);
+  const it = F.sel, grams = Math.max(1, Math.round(F.grams || it.g)), nn = FA.nutr(it, grams);
   const p = S.plan[F.k];
   const replaces = !!(F.replaces && p && p[F.slot]);
-  FA.logExtra(F.k, { name: F.sel.name, e: F.sel.e, key: F.sel.key, g: nn.g, kcal: nn.kcal, prot: nn.prot, kh: nn.kh, fat: nn.fat, slot: F.slot, replaces, thumb: F.thumb || null, conf: F.conf ?? null });
-  // alte Vorschaubilder (> 21 Tage) aufräumen
+  const r1 = v => (v == null ? null : Math.round(v * 10) / 10);
+  FA.logExtra(F.k, { name: it.name, brand: it.brand || '', e: it.e, key: it.key, g: nn.g, ml: !!it.ml, kcal: nn.kcal, prot: r1(nn.prot), kh: r1(nn.kh), sugar: r1(nn.sugar), fat: r1(nn.fat), sat: r1(nn.sat), fiber: r1(nn.fiber), salt: nn.salt == null ? null : Math.round(nn.salt * 100) / 100, slot: F.slot, replaces, thumb: F.thumb || null, conf: F.conf ?? null, via: it.via || null });
+  FA.remember(it, grams);
+  if (F.firstGuess && it.via !== 'barcode') FA.learnChoice(F.firstGuess, it);
   for (const [d, list] of Object.entries(S.extra)) if (E.daysBetween(d, E.todayKey()) > 21) list.forEach(x => { x.thumb = null; });
   save(true); haptic.ok();
-  const savedName = F.sel.name;
+  const savedName = it.name, kc = nn.kcal;
   ui.day = F.k; ui.food = null;
   go('#/heute');
-  setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 36); toast('Eingetragen: <b>' + esc(savedName) + '</b> · ' + nn.kcal + ' kcal ✓'); }, 380);
+  setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 36); toast('Eingetragen: <b>' + esc(savedName) + '</b> · ' + kc + ' kcal ✓'); }, 380);
+}
+const num = v => { const x = parseFloat(String(v || '').replace(',', '.')); return isNaN(x) ? null : x; };
+function readLabelForm() {
+  const F = ui.food, o = {};
+  $$('[data-lf]').forEach(i => { o[i.dataset.lf] = num(i.value); });
+  F.form = o; F.formName = ($('#lf-name') || {}).value || ''; F.formBrand = ($('#lf-brand') || {}).value || ''; F.formG = ($('#lf-g') || {}).value || '';
+  return o;
+}
+let searchSeq = 0;
+async function runSearch(q) {
+  const F = ui.food; if (!F) return;
+  const my = ++searchSeq;
+  if (q.trim().length < 2) { F.results = []; F.loading = false; return; }
+  if (!FA.dbReady()) { F.loading = true; refreshKeep(); try { await FA.loadProducts(); } catch (e) { /* nur lokale Treffer */ } F.loading = false; }
+  if (my !== searchSeq) return;
+  F.results = FA.searchLocal(q, 40);
+}
+function refreshKeep() {
+  const q = $('#food-q'); const pos = q ? q.selectionStart : 0, focus = q && document.activeElement === q;
+  refresh();
+  const n = $('#food-q'); if (n && focus) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { /* egal */ } }
 }
 
 const A = {
-  foodcam(el) { startFoodCam(el && el.dataset && el.dataset.k); },
-  foodsearch() { foodReset(); ui.food.state = 'pick'; go('#/foto'); },
-  'food-demo'() {
-    const pick = n => LABELS.indexOf(n);
-    Object.assign(ui.food, { state: 'scan', img: null });
+  foodcam(el) { const d = (el && el.dataset) || {}; startFoodCam(d.k, d.mode || 'food', d.src || 'camera', d.code || ''); },
+  foodsearch() { foodReset(); ui.food.state = 'pick'; go('#/foto'); FA.loadProducts().catch(() => null); },
+  barcode() { startFoodCam(null, 'barcode'); },
+  'food-demo'(el) { demoFood(el.dataset.kind); },
+  async 'food-choose'(el) {
+    const info = FA.itemFromKey(el.dataset.key) || (ui.food.results || []).find(x => x.key === el.dataset.key); if (!info) return;
+    haptic.tap();
+    const F = ui.food; Object.assign(F, { state: 'done', sel: info, conf: null, grams: info.g, guesses: F.guesses && F.guesses.length ? F.guesses : [] });
     refresh(false);
-    setTimeout(() => {
-      const g = FA.rank([{ index: pick('Schnitzel'), conf: 0.58 }, { index: pick('Cordon bleu'), conf: 0.16 }, { index: pick('Chicken fried steak'), conf: 0.09 }, { index: pick('Fried chicken'), conf: 0.05 }]);
-      Object.assign(ui.food, { state: 'done', guesses: g, sel: g[0], conf: g[0].conf }); refresh(false);
-    }, 1200);
   },
-  'food-choose'(el) { const info = FA.fromKey(el.dataset.key); if (!info) return; haptic.tap(); Object.assign(ui.food, { state: 'done', sel: info, conf: null, size: 1 }); refresh(false); },
-  'food-alt'(el) { const g = ui.food.guesses.find(x => x.key === el.dataset.key); if (!g) return; haptic.tap(); Object.assign(ui.food, { sel: g, conf: g.conf, size: 1 }); refresh(); },
-  'food-find'() { haptic.tap(); Object.assign(ui.food, { state: 'pick', sel: null, q: '' }); refresh(false); setTimeout(() => { const q = $('#food-q'); if (q) q.focus(); }, 80); },
-  'food-size'(el) { ui.food.size = +el.dataset.v; haptic.tap(); refresh(); },
+  'food-alt'(el) { const g = ui.food.guesses.find(x => x.key === el.dataset.key); if (!g) return; haptic.tap(); Object.assign(ui.food, { sel: g, conf: g.conf, grams: g.g }); refresh(); },
+  'food-find'() { haptic.tap(); Object.assign(ui.food, { state: 'pick', sel: null, q: '', results: [] }); FA.loadProducts().catch(() => null); refresh(false); setTimeout(() => { const q = $('#food-q'); if (q) q.focus(); }, 80); },
+  'food-size'(el) { ui.food.grams = +(el.dataset.g || el.dataset.v) || ui.food.grams; haptic.tap(); refresh(); },
+  'food-step'(el) {
+    const F = ui.food, g = Math.round(F.grams || F.sel.g), step = g >= 200 ? 25 : g >= 60 ? 10 : 5;
+    F.grams = Math.max(1, g + (+el.dataset.v) * step); haptic.tap(); refresh();
+  },
+  'food-fav'() { const on = FA.toggleFav(ui.food.sel); haptic.tap(); toast(on ? '⭐ Als Favorit gespeichert' : 'Favorit entfernt'); refresh(); },
   'food-slot'(el) { const F = ui.food; F.slot = el.dataset.v; const L = S.log[F.k] || {}; F.replaces = !!(S.plan[F.k] && !(L.eaten && L.eaten[F.slot])); haptic.tap(); refresh(); },
   'food-save'() { foodSave(); },
+  'food-savecustom'() {
+    const F = ui.food, it = F.sel;
+    sheet(`<h2 class="sh-t">Als Produkt speichern</h2><p class="sh-sub">Dann findet die App es beim nächsten Mal sofort${F.unknownCode ? ' – auch per Barcode' : ''}.</p>
+      <label class="field"><span>Name</span><input id="sc-name" value="${esc(it.name === 'Eigenes Produkt' ? '' : it.name)}" placeholder="z. B. Haribo Goldbären" autocomplete="off"></label>
+      <label class="field"><span>Marke (optional)</span><input id="sc-brand" value="${esc(it.brand || '')}" autocomplete="off"></label>
+      <div class="sh-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn tap" id="sc-save">${ico('check')}Speichern</button></div>`, (el, close) => {
+      $('#sc-save', el).addEventListener('click', () => {
+        const name = ($('#sc-name', el).value || '').trim(); if (!name) { toast('Bitte einen Namen eingeben.', 'toast-warn'); return; }
+        const c = FA.saveCustom({ code: F.unknownCode || '', name, brand: ($('#sc-brand', el).value || '').trim(), n: it.n, g: it.g, serving: it.serving || 0, ml: !!it.ml, e: it.e, src: 'label' });
+        Object.assign(F.sel, c, { via: it.via, tmp: false }); F.guesses = [F.sel, ...(F.guesses || []).filter(x => x.key !== it.key)];
+        close(); haptic.ok(); toast('Gespeichert ✓ – ab jetzt in „Meine Produkte“'); refresh();
+      });
+    });
+  },
+  'lf-ml'(el) { readLabelForm(); ui.food.formMl = el.dataset.v === '1'; haptic.tap(); refresh(false); },
+  'lf-use'() {
+    const F = ui.food, o = readLabelForm();
+    const filled = ['kcal', 'fat', 'kh', 'sugar', 'prot'].filter(k => o[k] != null).length;
+    if (filled < 3) { toast('Mindestens Energie, Fett, Kohlenhydrate und Eiweiß eintragen.', 'toast-warn'); return; }
+    if (o.sugar != null && o.kh != null && o.sugar > o.kh + 0.6) { toast('Zucker kann nicht mehr sein als Kohlenhydrate.', 'toast-warn'); return; }
+    const g = num(F.formG) || (F.formMl ? 250 : 30);
+    const it = { ...tableItem({ per100: o, servG: g, ml: F.formMl }, F.formName.trim() || 'Eigenes Produkt'), brand: F.formBrand.trim(), g, via: 'tabelle' };
+    F.guesses = [it]; Object.assign(F, { sel: it, conf: 1, grams: g, state: 'done', firstGuess: null });
+    haptic.ok(); refresh(false);
+  },
   'extra-del'(el) {
     const k = el.dataset.k, id = el.dataset.id;
     const row = el.closest('.ml'); if (row) row.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(40px)' }], { duration: 220 });
@@ -643,10 +737,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'food-q' && ui.food) {
     ui.food.q = e.target.value;
     clearTimeout(window.__fq);
-    window.__fq = setTimeout(() => {
-      const pos = e.target.selectionStart; refresh();
-      const q = $('#food-q'); if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (x) { /* egal */ } }
-    }, 220);
+    window.__fq = setTimeout(async () => { await runSearch(ui.food ? ui.food.q : ''); if (ui.food) refreshKeep(); }, 180);
   }
 });
 document.addEventListener('change', e => {
@@ -662,6 +753,8 @@ document.addEventListener('change', e => {
     if (k === 'runTime') scheduleAll();
     if (current().includes('onboarding')) setTimeout(() => refresh(false), 0);
   }
+  if (el.id === 'food-g' && ui.food) { const v = parseInt(el.value, 10); if (v > 0 && v <= 3000) { ui.food.grams = v; refresh(); } return; }
+  if (el.dataset.lf !== undefined && ui.food) { readLabelForm(); return; }
   if (el.dataset.act === 'food-replace' && ui.food) { ui.food.replaces = el.checked; haptic.tap(); refresh(); return; }
   if (el.dataset.nt) { S.notif[el.dataset.nt].on = el.checked; save(); haptic.tap(); scheduleAll(); refresh(); }
   if (el.dataset.n) { const key = el.dataset.n; const rest = (S.notif[key].t || '').split(',').slice(1); S.notif[key].t = [el.value, ...rest].join(','); save(); scheduleAll(); }

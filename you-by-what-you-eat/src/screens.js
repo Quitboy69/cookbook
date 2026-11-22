@@ -6,6 +6,7 @@ import * as SP from './sport.js';
 import { ico, esc, ring } from './ui.js';
 import { isNative } from './native.js';
 import * as FA from './foodai.js';
+import * as N from './nutri.js';
 
 const { fmtInt, dec, eur, lit, DAYS, DS, MONTHS } = E;
 export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null, rz: 'alle', timer: null };
@@ -71,6 +72,10 @@ function gauge(eaten, goal, burned) {
     <button class="g-mid tap" data-go="#/info/kcal"><b data-count="${Math.abs(left)}">0</b><small>${left >= 0 ? 'Übrig' : 'drüber'}</small></button>
     <button class="g-side r tap" data-go="#/info/verbrannt"><b data-count="${burned}">0</b><small>Verbrannt</small></button>
   </div>`;
+}
+function sugarRow(tot) {
+  const v = tot.eatenSugar || 0, plan = tot.sugar || 0, cls = v >= 90 ? 'red' : v >= 50 ? 'warn' : '';
+  return `<button class="sugar-row tap ${cls}" data-go="#/info/zucker"><span class="sr-l">🍬 Zucker</span><span class="mbar"><i class="plan" style="width:${pct(plan, 90)}"></i><i data-w="${pct(v, 90)}"></i></span><b>${fmtInt(v)} / 90 g</b></button>`;
 }
 function macroBars(tot, T) {
   const m = [['kh', 'Kohlenhydrate', tot.eatenKh, T.kh, tot.kh], ['prot', 'Eiweiß', tot.eatenProt, T.prot, tot.prot], ['fat', 'Fett', tot.eatenFat, T.fat, tot.fat]];
@@ -140,10 +145,11 @@ export function heute() {
     <article class="card rise">
       ${gauge(tot.eaten, T.kcal, burned)}
       ${macroBars(tot, T)}
+      ${sugarRow(tot)}
       <p class="plan-note">${ico('book', 'xs')} Plan: ${fmtInt(tot.kcal)} kcal · ${tot.prot} g Eiweiß · ${eur(tot.eur)} pro Person</p>
     </article>
 
-    <article class="card rise"><div class="row-b"><h2 class="c-h">Mahlzeiten</h2><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">1 Pers.</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${per}</button></div></div><ul class="mlist">${meals}${FA.extrasOf(k).map(x => `<li class="ml extra"><button class="ml-main tap" data-act="extra-info" data-k="${k}" data-id="${x.id}">${x.thumb ? `<span class="fc photo" style="--p:1"><img src="${x.thumb}" alt=""></span>` : `<span class="fc" style="--h:30;--p:1"><span class="fc-in">${x.e}</span></span>`}<span class="ml-t"><b>📸 ${slotLabel[x.slot] || 'Snack'}${x.replaces ? '' : ' <span class="flag flag-small">extra</span>'}</b><span>${esc(x.name)}</span><small>${fmtInt(x.kcal)} kcal · ${x.g} g · ${new Date(x.t).toTimeString().slice(0, 5)}</small></span></button><button class="ml-del tap" data-act="extra-del" data-k="${k}" data-id="${x.id}" aria-label="Löschen">${ico('close')}</button></li>`).join('')}</ul>
+    <article class="card rise"><div class="row-b"><h2 class="c-h">Mahlzeiten</h2><div class="seg sm"><button class="tap${ui.amt === 'pp' ? ' on' : ''}" data-act="amt" data-v="pp">1 Pers.</button><button class="tap${ui.amt === 'all' ? ' on' : ''}" data-act="amt" data-v="all">für ${per}</button></div></div><ul class="mlist">${meals}${FA.extrasOf(k).map(x => `<li class="ml extra"><button class="ml-main tap" data-act="extra-info" data-k="${k}" data-id="${x.id}">${x.thumb ? `<span class="fc photo" style="--p:1"><img src="${x.thumb}" alt=""></span>` : `<span class="fc" style="--h:30;--p:1"><span class="fc-in">${x.e}</span></span>`}<span class="ml-t"><b>📸 ${slotLabel[x.slot] || 'Snack'}${x.replaces ? '' : ' <span class="flag flag-small">extra</span>'}</b><span>${esc(x.name)}</span><small>${fmtInt(x.kcal)} kcal${x.sugar != null ? ' · 🍬 ' + dec(x.sugar, x.sugar < 10 ? 1 : 0) + ' g' : ''} · ${x.g} ${x.ml ? 'ml' : 'g'} · ${new Date(x.t).toTimeString().slice(0, 5)}</small></span></button><button class="ml-del tap" data-act="extra-del" data-k="${k}" data-id="${x.id}" aria-label="Löschen">${ico('close')}</button></li>`).join('')}</ul>
       <button class="photo-cta tap" data-act="foodcam" data-k="${k}"><span class="pc-ico">${ico('camera')}</span><span><b>Was anderes gegessen?</b><small>Foto machen – die KI erkennt’s und zählt die Kalorien</small></span>${ico('chev')}</button></article>
 
     ${a ? `
@@ -299,9 +305,10 @@ export function dish(id, q) {
 
       <article class="card macro-card rise">
         <button class="donut tap" data-go="#/info/makros" style="--a:${(d.kh * 4 / kcalTot * 360).toFixed(0)}deg;--b:${((d.kh * 4 + d.prot * 4) / kcalTot * 360).toFixed(0)}deg"><span><b>${fmtInt(d.kcal)}</b><small>kcal</small></span></button>
-        <ul class="mlegend"><li class="m-kh"><i></i>Kohlenhydrate <b>${d.kh} g</b></li><li class="m-prot"><i></i>Eiweiß <b>${d.prot} g</b></li><li class="m-fat"><i></i>Fett <b>${d.fat} g</b></li><li class="cost"><i></i>Kosten <b>${eur(c.portion)}</b></li></ul>
+        <ul class="mlegend"><li class="m-kh"><i></i>Kohlenhydrate <b>${d.kh} g</b></li><li class="m-prot"><i></i>Eiweiß <b>${d.prot} g</b></li><li class="m-fat"><i></i>Fett <b>${d.fat} g</b></li><li class="m-sugar"><i></i>davon Zucker <b>${d.sugar != null ? d.sugar : '–'} g</b></li><li class="cost"><i></i>Kosten <b>${eur(c.portion)}</b></li></ul>
         <p class="fine full">${isPot ? 'pro Portion' : 'pro Person'} · ${Math.round(d.kcal / E.targets().kcal * 100)} % deines Tagesbedarfs</p>
       </article>
+      ${d.sugar != null ? `<article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Nährwerte ${isPot ? 'pro Portion' : 'pro Person'}</h3>${dishTable(d)}</article>` : ''}
 
       ${blocked ? `<article class="card warn rise">${ico('ban')}<div><b>Vorerst aussortiert</b><p>Du hast es ${low}× unter 3 Sterne bewertet – darum plant die App automatisch was anderes ein.</p><button class="btn sm tap" data-act="unblock" data-id="${id}">Doch wieder einplanen</button></div></article>` : ''}
       ${why.length ? `<article class="card rise"><h3 class="c-h">${ico('spark', 'xs')} Warum ${k === E.todayKey() ? 'heute' : 'an dem Tag'}?</h3><ul class="facts">${why.map(w => '<li>' + esc(w) + '</li>').join('')}</ul></article>` : ''}
@@ -512,6 +519,21 @@ export function info(topic) {
       ${mealsBars('kcal', ' kcal', T.kcal)}
       <article class="card rise"><h3 class="c-h">${diff > 150 ? 'Laut Plan fehlen ≈ ' + fmtInt(diff) + ' kcal' : diff < -250 ? 'Plan liegt über dem Ziel' : 'Plan passt'}</h3>
         <ul class="facts">${diff > 150 ? '<li>+ 1 großes Glas Milch (0,3 L) ≈ +190 kcal</li><li>+ 1 Banane ≈ +110 kcal</li><li>+ 1 EL Erdnussbutter ≈ +90 kcal</li><li>Abends etwas mehr Reis/Nudeln nehmen</li>' : '<li>Weiter so – genau so baust du langsam und sauber auf.</li>'}<li>In der Früh bewusst wenig – der Rest ist auf Mittag, Jause und Abend verteilt.</li></ul></article>`);
+    }
+    case 'zucker': {
+      const eat = tot.eatenSugar || 0, extras = FA.extrasOf(k).slice().sort((a, b) => (b.sugar || 0) - (a.sugar || 0));
+      const src = [];
+      if (p) ['f', 'm', 's', 'a'].forEach(sl => { const d = DISHES[p[sl]]; const L = S.log[k] || {}; if (d && L.eaten && L.eaten[sl] && !(L.skip && L.skip[sl])) src.push([d.name, d.sugar || 0, d.emoji]); });
+      extras.forEach(x => src.push([x.name, x.sugar || 0, x.e]));
+      src.sort((a, b) => b[1] - a[1]);
+      const sg = N.sugarInfo(eat);
+      return G('Zucker', '🍬', 330, `
+      <article class="card rise"><p class="lede">Hier siehst du, wie viel Zucker du <b>${relDay(k).toLowerCase()}</b> gegessen hast – von Obst und Milch (natürlich) bis Haribo und Cola (zugesetzt).</p>
+        <div class="big-num"><b data-count="${eat}" data-suf=" g">0</b><span>≈ ${dec(eat / N.SUGAR_CUBE, 0)} Zuckerwürfel · Plan für den ganzen Tag: ${fmtInt(tot.sugar || 0)} g</span></div>
+        <div class="mbar big"><i data-w="${pct(eat, 90)}"></i></div><p class="fine">Skala: 90 g = Referenzmenge für Gesamtzucker (EU). WHO: höchstens 50 g <b>freie</b> Zucker (zugesetzt, in Saft und Honig) – ideal unter 25 g.</p></article>
+      ${src.length ? `<article class="card rise"><h3 class="c-h">Woher kommt der Zucker?</h3>${src.map(([n, v, e]) => `<div class="bar-row"><span class="br-l">${e || '🍽️'} ${esc(n).slice(0, 22)}</span><span class="br-t"><i data-w="${pct(v, Math.max(1, src[0][1]))}" style="--c:var(--fat)"></i></span><b>${dec(v, v < 10 ? 1 : 0)} g</b></div>`).join('')}</article>` : '<article class="card rise"><p class="fine">Noch nichts gegessen – hak Mahlzeiten ab oder fotografiere dein Essen.</p></article>'}
+      <article class="card rise"><h3 class="c-h">Gut zu wissen</h3><ul class="facts"><li><b>1 Zuckerwürfel = 3 g.</b> Eine Dose Cola (330 ml) hat ≈ 35 g = 12 Würfel.</li><li><b>Natürlicher Zucker</b> in ganzen Früchten und Milch wirkt anders als freier Zucker – er kommt mit Ballaststoffen bzw. Eiweiß.</li><li><b>Ampel (je 100 g):</b> Zucker grün bis 5 g, gelb bis 22,5 g, rot darüber. Bei Getränken (je 100 ml) grün bis 2,5 g, rot ab 11,25 g.</li><li>Auf der Packung steht Zucker unter „Kohlenhydrate – davon Zucker“.</li></ul>
+        <button class="btn tap" data-act="foodcam">${ico('camera')}Etwas fotografieren</button></article>`);
     }
     case 'makros':
       return G('Makros', '🥗', 140, `
@@ -942,7 +964,8 @@ export function quickSheetHTML() {
     ['drop', 'water', '+ Glas Wasser'],
     ['scale', 'go', 'Gewicht', '#/weight'],
     ['book', 'go', 'Rezepte', '#/rezepte'],
-    ['edit', 'foodsearch', 'Essen suchen'],
+    ['edit', 'foodsearch', 'Essen / Snack suchen'],
+    ['tag', 'barcode', 'Barcode scannen'],
     ['cart', 'go', 'Einkauf', '#/einkauf']
   ];
   return `<h2 class="sh-t">Schnell erledigt</h2><div class="qgrid">${tiles.map(([icon, kind, label, arg]) => `<button class="qt tap" data-q="${kind}" ${arg ? 'data-arg="' + arg + '"' : ''}><span class="qt-i">${ico(icon)}</span><b>${label}</b></button>`).join('')}</div>`;
@@ -991,60 +1014,160 @@ export function onboarding() {
 function notFound() { return { html: `<div class="page detail">${dhead('Hoppla')}<p class="empty">Nicht gefunden.</p></div>` }; }
 
 /* =========================================================
-   ESSEN FOTOGRAFIEREN – lokale KI
+   Nährwerte: Tabelle wie auf der Packung, Ampel, Zuckerwürfel
    ========================================================= */
-const SIZES = [[0.75, 'Klein'], [1, 'Normal'], [1.5, 'Groß'], [2, 'Riesig']];
+const dotT = (k, v, ml) => { const l = N.light(k, v, ml); return l ? `<i class="tl ${l}" title="${N.LIGHT_TXT[l]}"></i>` : ''; };
+export function nutriTable(it, grams) {
+  const ml = !!it.ml, u = ml ? 'ml' : 'g', per = N.scale(it.n, grams);
+  const rows = N.ROWS.map(r => {
+    const v100 = it.n[N.K[r.k]], vp = per[r.k];
+    const first = r.k === 'kcal' ? (v100 == null ? '–' : `${fmtInt(v100)} kcal<small>${fmtInt(N.kJ(v100))} kJ</small>`) : v100 == null ? '–' : `${N.fmtV(r.k, v100)} ${r.unit}`;
+    const second = r.k === 'kcal' ? (vp == null ? '–' : `${fmtInt(vp)} kcal<small>${fmtInt(N.kJ(vp))} kJ</small>`) : vp == null ? '–' : `${N.fmtV(r.k, vp)} ${r.unit}`;
+    const rm = vp == null ? '' : Math.round(vp / r.ri * 100) + ' %';
+    return `<tr class="${r.sub ? 'sub' : ''}${r.bold ? ' b' : ''}"><th>${r.label}</th><td>${dotT(r.k, v100, ml)}${first}</td><td>${second}</td><td class="rm">${rm}</td></tr>`;
+  }).join('');
+  return `<table class="ntab"><thead><tr><th>Nährwerte</th><th>je 100 ${u}</th><th>je ${fmtInt(grams)} ${u}</th><th>% RM*</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="fine ntab-n">* RM = Referenzmenge für einen durchschnittlichen Erwachsenen (8.400 kJ / 2.000 kcal). <span class="tl-leg"><i class="tl g"></i>wenig <i class="tl y"></i>mittel <i class="tl r"></i>viel</span></p>`;
+}
+function dishTable(d) {
+  const n = [d.kcal, d.prot, d.kh, d.sugar, d.fat, d.sat, d.fiber, d.salt].map(v => (v === undefined ? null : v));
+  const rows = N.ROWS.map(r => {
+    const v = n[N.K[r.k]];
+    return `<tr class="${r.sub ? 'sub' : ''}${r.bold ? ' b' : ''}"><th>${r.label}</th><td>${r.k === 'kcal' ? (v == null ? '–' : `${fmtInt(v)} kcal<small>${fmtInt(N.kJ(v))} kJ</small>`) : v == null ? '–' : `${N.fmtV(r.k, v)} ${r.unit}`}</td><td class="rm">${v == null ? '' : Math.round(v / r.ri * 100) + ' %'}</td></tr>`;
+  }).join('');
+  return `<table class="ntab two"><thead><tr><th>Nährwerte</th><th>pro Portion</th><th>% RM*</th></tr></thead><tbody>${rows}</tbody></table><p class="fine ntab-n">* Referenzmenge für Erwachsene · aus den Zutaten berechnet</p>`;
+}
+function cubesHTML(g) {
+  const full = Math.floor(g / N.SUGAR_CUBE), part = g / N.SUGAR_CUBE - full, show = Math.min(full, 36);
+  let h = ''; for (let i = 0; i < show; i++) h += `<i class="cube" style="--d:${i * 28}ms"></i>`;
+  if (full < 36 && part > 0.1) h += `<i class="cube half" style="--f:${Math.round(part * 100)}%;--d:${show * 28}ms"></i>`;
+  return h + (full > 36 ? `<b class="cube-more">+${full - 36}</b>` : '');
+}
+function sugarCard(it, grams, dayEaten) {
+  const sg = it.n[N.K.sugar];
+  if (sg == null) return `<article class="card sugar-card rise"><h3 class="c-h">🍬 Zucker</h3><p class="lede">Auf diesem Produkt ist keine Zucker-Angabe hinterlegt.</p></article>`;
+  const g = sg * grams / 100, I = N.sugarInfo(g), nd = dayEaten + g;
+  const tsp = g / 4;
+  return `<article class="card sugar-card lvl-${I.lvl} rise">
+    <div class="row-b"><h3 class="c-h">🍬 Zucker</h3><button class="link tap" data-go="#/info/zucker">Mehr ${ico('chev', 'xs')}</button></div>
+    <div class="sg-top"><b>${N.fmtV('sugar', g)} g</b><span>in dieser Menge<small>${N.fmtV('sugar', sg)} g je 100 ${it.ml ? 'ml' : 'g'} ${dotT('sugar', sg, it.ml)}</small></span></div>
+    <div class="cubes" aria-label="${dec(I.cubes, 1)} Zuckerwürfel">${cubesHTML(g)}</div>
+    <p class="sg-line">≈ <b>${dec(I.cubes, I.cubes < 10 ? 1 : 0)} Zuckerwürfel</b> · ${dec(tsp, tsp < 10 ? 1 : 0)} Teelöffel</p>
+    <div class="who"><span class="mbar"><i data-w="${pct(g, N.WHO_SUGAR)}"></i></span><small><b>${Math.round(g / N.WHO_SUGAR * 100)} %</b> der WHO-Höchstmenge (50 g/Tag) – ${I.txt}</small></div>
+    <p class="fine">Heute bisher ${dec(dayEaten, 0)} g Zucker → mit diesem Essen ${dec(nd, 0)} g (Referenzmenge 90 g).</p></article>`;
+}
+function nsBadge(ns, est) {
+  if (!ns) return '';
+  return `<div class="nsb${est ? ' est' : ''}" title="Nutri-Score ${ns.toUpperCase()}${est ? ' (geschätzt)' : ''}">${['a', 'b', 'c', 'd', 'e'].map(x => `<i class="${x}${x === ns ? ' on' : ''}">${x.toUpperCase()}</i>`).join('')}${est ? '<small>≈</small>' : ''}</div>`;
+}
+const viaTxt = { barcode: '📦 Barcode', text: '🔤 Packungstext', ki: '🧠 Foto-KI', gelernt: '🎓 gelernt', tabelle: '🏷️ Tabelle' };
+
+/* =========================================================
+   ESSEN FOTOGRAFIEREN / SUCHEN
+   ========================================================= */
 const SLOT_CH = [['f', 'Frühstück'], ['m', 'Mittag'], ['s', 'Jause'], ['a', 'Abend']];
+const itemRow = it => {
+  const sg = it.n[N.K.sugar], l = it.n[0];
+  return `<button class="fl tap" data-act="food-choose" data-key="${esc(it.key)}"><span class="fl-e">${it.e}</span><span><b>${it.brand ? '<i class="fl-b">' + esc(it.brand) + '</i> ' : ''}${esc(it.name)}</b><small>${l == null ? '–' : fmtInt(l)} kcal${sg != null ? ' · <u class="sg ' + (N.light('sugar', sg, it.ml) || '') + '">🍬 ' + N.fmtV('sugar', sg) + ' g</u>' : ''} <em>/100 ${it.ml ? 'ml' : 'g'}</em> · ${esc(it.cat || '')}</small></span>${ico('chev')}</button>`;
+};
 export function foto() {
   const F = ui.food;
   if (!F) return { html: `<div class="page detail">${dhead('Essen')}<p class="empty">Kein Foto.</p></div>` };
   if (F.state === 'scan') return { html: `
   <div class="page fscan">
-    <div class="fs-img">${F.img ? `<img src="${F.img}" alt="">` : ''}<div class="fs-grid"></div><div class="beam"></div><span class="fs-c tl"></span><span class="fs-c tr"></span><span class="fs-c bl"></span><span class="fs-c br"></span></div>
-    <div class="fs-msg"><span class="fs-brain">🧠</span><b>KI erkennt dein Essen …</b><small>läuft offline auf deinem Handy</small><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="fs-img">${F.img ? `<img src="${F.img}" alt="">` : '<div class="fs-demo">🍽️</div>'}<div class="fs-grid"></div><div class="beam"></div><span class="fs-c tl"></span><span class="fs-c tr"></span><span class="fs-c bl"></span><span class="fs-c br"></span></div>
+    <div class="fs-msg"><span class="fs-brain">🧠</span><b>KI schaut genau hin …</b><small>Barcode · Packungstext · Nährwerttabelle · Gericht – alles offline am Handy</small><span class="dots"><i></i><i></i><i></i></span></div>
   </div>`, cls: 'dark-screen' };
-  if (F.state === 'pick' || F.state === 'error' || !F.sel) {
-    const res = F.q ? FA.search(F.q) : [];
-    return { html: `
+  if (F.state === 'label') return labelForm(F);
+  if (F.state === 'pick' || F.state === 'error' || !F.sel) return pickScreen(F);
+  return resultScreen(F);
+}
+function pickScreen(F) {
+  const q = F.q || '', res = q.trim().length >= 2 ? (F.results || []) : [];
+  const hist = (S.food.hist || []).slice(0, 8), favs = S.food.fav || [], cust = (S.food.cust || []).filter(c => !c.code || c.src === 'label').slice(0, 6);
+  const loading = F.loading ? '<p class="fine">Produktdatenbank wird geladen …</p>' : '';
+  return { html: `
   <div class="page detail">
-    ${dhead('Essen eintragen', F.state === 'error' ? 'Foto nicht erkannt' : 'suchen')}
-    ${F.state === 'error' ? `<article class="card warn rise">${ico('info')}<div><b>Das hat nicht geklappt</b><p>${esc(F.error || 'Auf dem Foto wurde kein Essen erkannt.')}</p><button class="btn sm tap" data-act="foodcam">${ico('camera')}Nochmal fotografieren</button></div></article>` : ''}
-    ${!isNative && F.state !== 'error' ? `<article class="card rise"><p class="lede">Im Browser gibt’s keine Kamera-KI – in der App einfach auf das 📸 in der Mitte tippen.</p><button class="btn ghost wide tap" data-act="food-demo">🧪 Beispiel-Foto testen</button></article>` : ''}
-    <div class="fsearch rise"><span>${ico('edit')}</span><input id="food-q" type="search" placeholder="z. B. Schnitzel, Semmel, Banane, Cola …" value="${esc(F.q || '')}" autocomplete="off"></div>
-    ${res.length ? `<div class="flist rise">${res.map(i => `<button class="fl tap" data-act="food-choose" data-key="${esc(i.key)}"><span class="fl-e">${i.e}</span><span><b>${esc(i.name)}</b><small>${fmtInt(i.n[0])} kcal/100 g · Portion ≈ ${i.g} g${i.src === 'avg' ? ' · Durchschnitt' : ''}</small></span>${ico('chev')}</button>`).join('')}</div>` : F.q ? '<p class="empty">Nix gefunden – probier ein anderes Wort.</p>' : `
-    <h2 class="sec rise">Schnell auswählen</h2><div class="fquick rise">${[0, 6, 14, 22, 23, 30, 32, 34, 35, 51, 54, 61].map(i => FA.infoEveryday(i)).map(i => `<button class="fq tap" data-act="food-choose" data-key="${i.key}"><span>${i.e}</span><b>${esc(i.name)}</b></button>`).join('')}</div>`}
+    ${dhead('Essen eintragen', 'fotografieren oder suchen')}
+    ${F.state === 'error' ? `<article class="card warn rise">${ico('info')}<div><b>${F.unknownCode ? 'Barcode ' + esc(F.unknownCode) + ' nicht gefunden' : 'Nichts erkannt'}</b><p>${esc(F.error || '')}</p>${F.unknownCode ? `<button class="btn sm tap" data-act="foodcam" data-mode="label" data-code="${esc(F.unknownCode)}">${ico('camera')}Nährwerttabelle fotografieren</button>` : `<button class="btn sm tap" data-act="foodcam">${ico('camera')}Nochmal fotografieren</button>`}</div></article>` : ''}
+    <div class="fmodes rise">
+      <button class="fm tap" data-act="foodcam"><span>📸</span><b>Essen</b><small>Teller, Obst, Snack</small></button>
+      <button class="fm tap" data-act="foodcam" data-mode="barcode"><span>📦</span><b>Barcode</b><small>Packung scannen</small></button>
+      <button class="fm tap" data-act="foodcam" data-mode="label"><span>🏷️</span><b>Tabelle</b><small>Nährwerte lesen</small></button>
+    </div>
+    <div class="fsearch rise"><span>${ico('edit')}</span><input id="food-q" type="search" placeholder="Haribo, Beef Tatar, Cola, Spaghetti …" value="${esc(q)}" autocomplete="off"></div>
+    ${loading}
+    ${res.length ? `<div class="flist rise">${res.map(itemRow).join('')}</div>` : q.trim().length >= 2 && !F.loading ? `<p class="empty">Nix gefunden. Fotografiere die Packung (Barcode oder Tabelle) – dann lernt die App das Produkt.</p>` : ''}
+    ${!isNative && !res.length ? `<article class="card rise"><h3 class="c-h">🧪 Im Browser testen</h3><p class="fine">Hier gibt’s keine Kamera-KI. Beispiele laufen durch dieselbe Auswertung wie ein echtes Foto:</p><div class="chips"><button class="chip tap" data-act="food-demo" data-kind="haribo">📦 Haribo-Packung</button><button class="chip tap" data-act="food-demo" data-kind="table">🏷️ Nährwerttabelle</button><button class="chip tap" data-act="food-demo" data-kind="schnitzel">🥩 Schnitzel</button><button class="chip tap" data-act="food-demo" data-kind="banana">🍌 Banane</button></div></article>` : ''}
+    ${!res.length && q.trim().length < 2 ? `${favs.length ? `<h2 class="sec sm rise">⭐ Favoriten</h2><div class="flist rise">${favs.slice(0, 6).map(itemRow).join('')}</div>` : ''}${hist.length ? `<h2 class="sec sm rise">Zuletzt gegessen</h2><div class="flist rise">${hist.map(itemRow).join('')}</div>` : ''}${cust.length ? `<h2 class="sec sm rise">Meine Produkte</h2><div class="flist rise">${cust.map(c => itemRow(FA.customItem(c))).join('')}</div>` : ''}
+    <h2 class="sec sm rise">Schnell auswählen</h2><div class="fquick rise">${['Banane', 'Apfel', 'Semmel / Kaisersemmel', 'Cola', 'Gummibärchen / Fruchtgummi', 'Vollmilchschokolade', 'Kartoffelchips (gesalzen)', 'Magertopfen', 'Ei, gekocht', 'Kaffee schwarz', 'Bier (Lager/Hell)', 'Nuss-Nougat-Creme (Nutella)'].map(n => { const gi = FA.genIndex(n); if (gi < 0) return ''; const i = FA.genItem(gi); return `<button class="fq tap" data-act="food-choose" data-key="${i.key}"><span>${i.e}</span><b>${esc(i.name.split(' (')[0].split(' / ')[0])}</b></button>`; }).join('')}</div>` : ''}
+    <p class="fine src-note">Daten: Open Food Facts (ODbL) · USDA FoodData Central · eigene Richtwerte</p>
   </div>` };
-  }
-  const info = F.sel, nn = FA.nutr(info, F.size);
+}
+function resultScreen(F) {
+  const it = F.sel, grams = F.grams || it.g, per = FA.nutr(it, grams);
   const T = E.targets(), k = F.k || E.todayKey(), tot = E.dayTotals(k), burned = SP.burned(k);
-  const leftAfter = T.kcal + burned - tot.eaten - nn.kcal;
+  const leftAfter = T.kcal + burned - tot.eaten - per.kcal;
   const p = S.plan[k], planned = p && DISHES[p[F.slot]];
   const conf = F.conf != null ? Math.round(F.conf * 100) : null;
-  const vd = FA.verdict(info, nn);
-  const unitG = /ml/.test(info.desc || '') ? 'ml' : 'g';
+  const vd = N.verdict(it.n.map(v => (v == null ? 0 : v)), { prot: per.prot || 0, fiber: per.fiber || 0, sugar: per.sugar, kcal: per.kcal }, it.ml);
+  const unit = it.ml ? 'ml' : 'g';
+  const ns = it.ns || ((it.k === 'c' || it.k === 'p') && it.n.every(v => v != null) ? N.nutriScore(it.n, it.ml) : '');
+  const opts = FA.portionOptions(it);
+  const alts = (F.guesses || []).filter(g => g.key !== it.key).slice(0, 5);
+  const fav = FA.isFav(it.key);
+  const viaBadge = it.via ? `<span class="conf ${it.via === 'barcode' ? 'hi' : conf >= 50 ? 'hi' : conf >= 20 ? 'mid' : 'lo'}">${viaTxt[it.via] || ''}${conf != null && it.via !== 'barcode' && it.via !== 'tabelle' ? ' · ' + conf + ' %' : ''}</span>` : '<span class="conf hi">✓ ausgewählt</span>';
   return { html: `
   <div class="page detail no-head food-res">
-    <section class="fr-hero">${F.img ? `<img src="${F.img}" alt="">` : `<div class="fr-emo"><span>${info.e}</span></div>`}<button class="iconbtn glass-btn tap" data-act="back" aria-label="Zurück">${ico('back')}</button>
-      <div class="fr-over">${conf != null ? `<span class="conf ${conf >= 50 ? 'hi' : conf >= 20 ? 'mid' : 'lo'}">🧠 ${conf} % sicher</span>` : '<span class="conf hi">✓ ausgewählt</span>'}<h1>${info.e} ${esc(info.name)}</h1><p>${[info.label && info.label !== info.name ? 'KI: „' + esc(info.label) + '“' : '', info.src !== 'exact' ? esc(info.cat) : '', info.src === 'avg' ? 'Werte geschätzt' : ''].filter(Boolean).join(' · ')}</p></div></section>
+    <section class="fr-hero">${F.img ? `<img src="${F.img}" alt="">` : `<div class="fr-emo"><span>${it.e}</span></div>`}<button class="iconbtn glass-btn tap" data-act="back" aria-label="Zurück">${ico('back')}</button>
+      <button class="iconbtn glass-btn fav-btn tap${fav ? ' on' : ''}" data-act="food-fav" aria-label="Favorit">${fav ? '★' : '☆'}</button>
+      <div class="fr-over">${viaBadge}<h1>${it.brand ? '<small>' + esc(it.brand) + '</small>' : ''}${it.e} ${esc(it.name)}</h1><p>${[it.k === 'd' && it.label && it.label !== it.name ? 'KI: „' + esc(it.label) + '“' : '', it.cat && it.k !== 'd' ? esc(it.cat) : '', it.src === 'avg' ? 'Werte geschätzt' : '', it.code ? 'EAN ' + esc(it.code) : ''].filter(Boolean).join(' · ')}</p></div></section>
     <section class="d-sheet">
-      <div class="fr-kcal rise"><b data-count="${nn.kcal}">0</b><span>kcal<small>für ≈ ${nn.g} ${unitG}</small></span></div>
+      ${alts.length ? `<div class="alts-h rise"><small>Oder ist es …</small></div><div class="alts rise">${alts.map(g => { const bn = g.brand && !FA.norm(g.name).startsWith(FA.norm(g.brand)) ? g.brand + ' ' + g.name : g.name; return `<button class="chip tap" data-act="food-alt" data-key="${esc(g.key)}">${g.e} ${esc(bn.length > 26 ? bn.slice(0, 25) + '…' : bn)}${g.via === 'barcode' ? '' : ' <small>' + Math.round((g.conf || 0) * 100) + ' %</small>'}</button>`; }).join('')}<button class="chip tap" data-act="food-find">${ico('edit')}Suchen</button></div>` : `<div class="alts rise"><button class="chip tap" data-act="food-find">${ico('edit')}Was anderes suchen</button></div>`}
+      ${F.packHint && !it.code && it.via !== 'barcode' ? `<article class="card hint-card rise"><span class="hint-ico">📦</span><span><b>Sieht nach einer Packung aus</b><small>Für genaue Werte: Barcode oder Nährwerttabelle fotografieren.</small></span><button class="btn sm tap" data-act="foodcam" data-mode="barcode">${ico('camera')}</button></article>` : ''}
+      <div class="fr-kcal rise"><b data-count="${per.kcal}">0</b><span>kcal<small>für ${fmtInt(per.g)} ${unit}</small></span>${nsBadge(ns, !it.ns)}</div>
       <div class="fr-mac rise">
-        <div class="m-prot"><small>Eiweiß</small><b>${nn.prot} g</b><span class="mbar"><i data-w="${pct(nn.prot, T.prot)}"></i></span><em>${Math.round(nn.prot / T.prot * 100)} % vom Tag</em></div>
-        <div class="m-kh"><small>Kohlenhydrate</small><b>${nn.kh} g</b><span class="mbar"><i data-w="${pct(nn.kh, T.kh)}"></i></span><em>${Math.round(nn.kh / T.kh * 100)} % vom Tag</em></div>
-        <div class="m-fat"><small>Fett</small><b>${nn.fat} g</b><span class="mbar"><i data-w="${pct(nn.fat, T.fat)}"></i></span><em>${Math.round(nn.fat / T.fat * 100)} % vom Tag</em></div>
+        <div class="m-prot"><small>Eiweiß</small><b>${per.prot == null ? '–' : N.fmtV('prot', per.prot) + ' g'}</b><span class="mbar"><i data-w="${pct(per.prot || 0, T.prot)}"></i></span><em>${per.prot == null ? '' : Math.round(per.prot / T.prot * 100) + ' % vom Tag'}</em></div>
+        <div class="m-kh"><small>Kohlenhydrate</small><b>${per.kh == null ? '–' : N.fmtV('kh', per.kh) + ' g'}</b><span class="mbar"><i data-w="${pct(per.kh || 0, T.kh)}"></i></span><em>${per.kh == null ? '' : Math.round(per.kh / T.kh * 100) + ' % vom Tag'}</em></div>
+        <div class="m-fat"><small>Fett</small><b>${per.fat == null ? '–' : N.fmtV('fat', per.fat) + ' g'}</b><span class="mbar"><i data-w="${pct(per.fat || 0, T.fat)}"></i></span><em>${per.fat == null ? '' : Math.round(per.fat / T.fat * 100) + ' % vom Tag'}</em></div>
       </div>
       ${vd.length ? `<div class="vd rise">${vd.map(([e, t, c]) => `<span class="vchip ${c}">${e} ${t}</span>`).join('')}</div>` : ''}
-      <h3 class="sec sm rise">Wie viel?</h3>
-      <div class="sizes rise">${SIZES.map(([f, l]) => `<button class="sz tap${F.size === f ? ' on' : ''}" data-act="food-size" data-v="${f}"><b>${l}</b><small>${Math.round(info.g * f)} ${unitG}</small></button>`).join('')}</div>
-      ${F.guesses && F.guesses.length > 1 ? `<h3 class="sec sm rise">Oder ist es …</h3><div class="alts rise">${F.guesses.filter(g => g.key !== info.key).slice(0, 4).map(g => `<button class="chip tap" data-act="food-alt" data-key="${esc(g.key)}">${g.e} ${esc(g.name)} <small>${Math.round(g.conf * 100)} %</small></button>`).join('')}<button class="chip tap" data-act="food-find">${ico('edit')}Suchen</button></div>` : `<div class="alts rise"><button class="chip tap" data-act="food-find">${ico('edit')}Was anderes suchen</button></div>`}
-      <article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Was ist das?</h3><p class="lede">${esc(info.desc)}</p>${info.src === 'avg' ? '<p class="fine">Dieses Gericht kennt die App nicht genau – die Werte sind ein Durchschnitt. Über „Suchen“ kannst du was Genaueres wählen.</p>' : info.src === 'cat' ? '<p class="fine">Werte typisch für ' + esc(info.cat) + ' – je nach Rezept ±20 %.</p>' : ''}
-        <div class="nutrow sm"><span><b>${info.n[0]}</b><small>kcal/100 ${unitG}</small></span><span class="m-prot"><b>${dec(info.n[1], 1)} g</b><small>Eiweiß</small></span><span class="m-kh"><b>${dec(info.n[2], 1)} g</b><small>KH</small></span><span class="m-fat"><b>${dec(info.n[3], 1)} g</b><small>Fett</small></span></div></article>
+
+      <article class="card amount rise"><h3 class="c-h">${ico('scale', 'xs')} Wie viel?</h3>
+        <div class="stepper2"><button class="iconbtn tap" data-act="food-step" data-v="-1" aria-label="weniger">${ico('minus')}</button><label><input id="food-g" type="number" inputmode="numeric" value="${Math.round(grams)}" min="1" max="3000"><span>${unit}</span></label><button class="iconbtn tap" data-act="food-step" data-v="1" aria-label="mehr">${ico('plus')}</button></div>
+        <div class="sizes">${opts.map(o => `<button class="sz tap${Math.round(grams) === o.g ? ' on' : ''}" data-act="food-size" data-g="${o.g}"><b>${o.l || o.g + ' ' + unit}</b>${o.l ? `<small>${o.g} ${unit}</small>` : ''}</button>`).join('')}</div></article>
+
+      <article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Nährwertangaben</h3>${nutriTable(it, grams)}</article>
+      ${sugarCard(it, grams, tot.eatenSugar || 0)}
+
+      <article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Was ist das?</h3>${it.desc ? `<p class="lede">${esc(it.desc)}</p>` : ''}
+        <p class="fine">${it.src === 'off' ? 'Werte von der Packung (Open Food Facts, von Nutzern erfasst) – bei Rezepturänderungen können sie abweichen.' : it.src === 'label' ? 'Werte, die du von der Packung abfotografiert hast.' : it.src === 'usda' ? 'Werte: USDA FoodData Central – Durchschnitt für dieses Lebensmittel.' : it.src === 'avg' ? 'Dieses Gericht kennt die App nicht genau – die Werte sind ein Durchschnitt. Über „Suchen“ geht’s genauer.' : it.src === 'cat' ? 'Typische Werte für ' + esc(it.cat) + ' – je nach Rezept ± 20 %.' : 'Richtwerte für ein typisches Gericht – je nach Rezept ± 20 %.'}</p>
+        ${it.tmp ? `<button class="btn ghost wide tap" data-act="food-savecustom">${ico('plus')}Als eigenes Produkt speichern</button>` : ''}</article>
+
       <article class="card rise"><h3 class="c-h">${ico('book', 'xs')} Eintragen als</h3>
         <div class="chips">${SLOT_CH.map(([v, l]) => `<button class="chip tap${F.slot === v ? ' on' : ''}" data-act="food-slot" data-v="${v}">${l}</button>`).join('')}</div>
         ${planned && !(S.log[k] && S.log[k].eaten && S.log[k].eaten[F.slot]) ? `<label class="switch-row tap"><span>Statt Plan: ${esc(planned.name)}</span><input type="checkbox" data-act="food-replace"${F.replaces ? ' checked' : ''}><i class="sw"></i></label><p class="fine">${F.replaces ? 'Das geplante Gericht zählt dann nicht mehr.' : 'Wird zusätzlich zum Plan gezählt.'}</p>` : ''}
-        <div class="left-after ${leftAfter < 0 ? 'over' : ''}"><span>Danach heute noch übrig</span><b>${leftAfter < 0 ? '−' + fmtInt(-leftAfter) + ' kcal (drüber)' : fmtInt(leftAfter) + ' kcal'}</b></div>
-      </article>
+        <div class="left-after ${leftAfter < 0 ? 'over' : ''}"><span>Danach heute noch übrig</span><b>${leftAfter < 0 ? '−' + fmtInt(-leftAfter) + ' kcal (drüber)' : fmtInt(leftAfter) + ' kcal'}</b></div></article>
+      <p class="fine src-note">Daten: Open Food Facts (ODbL) · USDA FoodData Central · Nutri-Score/Ampel nach offiziellen Schwellen</p>
       <div class="sticky-save"><button class="btn ghost tap" data-act="foodcam">${ico('camera')}Nochmal</button><button class="btn big tap" data-act="food-save">${ico('check')}Eintragen</button></div>
     </section>
+  </div>` };
+}
+function labelForm(F) {
+  const t = F.table || { per100: {}, hits: 0 }, p = F.form || t.per100 || {};
+  const fld = (k, label, unit) => `<label class="lf"><span>${label}</span><input data-lf="${k}" type="text" inputmode="decimal" value="${p[k] == null ? '' : String(p[k]).replace('.', ',')}" placeholder="–"><em>${unit}</em></label>`;
+  return { html: `
+  <div class="page detail">
+    ${dhead('Nährwerte übernehmen', F.unknownCode ? 'EAN ' + F.unknownCode : '')}
+    ${F.img ? `<img class="rv-img rise" src="${F.img}" alt="">` : ''}
+    <article class="card rise"><p class="lede">${t.hits >= 4 ? `<b>${t.hits} Werte erkannt.</b> Prüf kurz, ob sie stimmen – Korrekturen einfach eintippen.` : 'Die Tabelle konnte nur teilweise gelesen werden. Trag die Werte von der Packung ein (alles <b>je 100 ' + (F.formMl ? 'ml' : 'g') + '</b>).'}</p></article>
+    <article class="card rise">
+      <label class="field"><span>Name</span><input id="lf-name" value="${esc(F.formName || '')}" placeholder="z. B. Haribo Goldbären" autocomplete="off"></label>
+      <label class="field"><span>Marke (optional)</span><input id="lf-brand" value="${esc(F.formBrand || '')}" placeholder="z. B. Haribo" autocomplete="off"></label>
+      <div class="seg wide"><button class="tap${!F.formMl ? ' on' : ''}" data-act="lf-ml" data-v="0">Lebensmittel (je 100 g)</button><button class="tap${F.formMl ? ' on' : ''}" data-act="lf-ml" data-v="1">Getränk (je 100 ml)</button></div>
+      <div class="lgrid">${fld('kcal', 'Energie', 'kcal')}${fld('fat', 'Fett', 'g')}${fld('sat', 'ges. Fettsäuren', 'g')}${fld('kh', 'Kohlenhydrate', 'g')}${fld('sugar', 'davon Zucker', 'g')}${fld('fiber', 'Ballaststoffe', 'g')}${fld('prot', 'Eiweiß', 'g')}${fld('salt', 'Salz', 'g')}</div>
+      <label class="field"><span>Eine Portion / Packung wiegt (g oder ml)</span><input id="lf-g" type="text" inputmode="numeric" value="${F.formG || (t.servG || '')}" placeholder="z. B. 30"></label>
+    </article>
+    <div class="sticky-save"><button class="btn ghost tap" data-act="foodcam" data-mode="label">${ico('camera')}Nochmal</button><button class="btn big tap" data-act="lf-use">${ico('check')}Weiter</button></div>
   </div>` };
 }

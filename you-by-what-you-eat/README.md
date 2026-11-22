@@ -8,6 +8,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.2:** Essen fotografieren. Eine lokale KI erkennt das Gericht offline am Handy und zeigt Kalorien, Eiweiß, Kohlenhydrate und Fett.
 
+**Version 1.3:** deutlich bessere Erkennung und eine Nährwerttabelle wie auf der Packung, mit **Zucker**: Barcode-Scan, Packungstext, Nährwerttabelle lesen, über 54.000 Produkte (Haribo, Getränke, Snacks …) und 200 Grundnahrungsmittel (Spaghetti, Beef Tatar …) offline im Handy.
+
 ## Was die App kann
 
 | Bereich | Funktion |
@@ -16,7 +18,9 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 | **Kleines Frühstück** | 9 Varianten mit 230–440 kcal, weil in der Früh wenig reingeht (Smoothie, Kakao, Mini-Porridge …). Der Rest wird auf Mittag, Jause und Abend verteilt. |
 | **Abwechslung** | 16 Abendtöpfe, 6 Jausen und 9 Frühstücke. Ein Abendgericht kommt frühestens nach 8 Tagen wieder. Zwei Tage hintereinander gibt es nie dieselbe Beilage oder dasselbe Fleisch. Neue Gerichte werden bevorzugt. |
 | **Sterne 0–5** | Nach dem Essen kommt eine Benachrichtigung mit der Frage „Schon gegessen? Wie war’s?“. Bekommt ein Gericht **2× oder öfter unter 3 Sterne**, wird es automatisch aussortiert und im Plan ersetzt. Unter „Meine Bewertungen“ holst du es wieder zurück. |
-| **📸 Essen fotografieren** | Mittlerer Knopf → Foto → die lokale KI (Google AIY Food, ≈ 2.000 Gerichte, offline) erkennt das Essen. Du siehst Kalorien, Eiweiß, Kohlenhydrate und Fett, eine kurze Erklärung („Was ist das?“) und eine Einschätzung („Viel Eiweiß“, „Fettreich“ …). Portion wählen (Klein bis Riesig), bei Bedarf eine andere Vermutung oder die Suche nehmen, dann „Eintragen“. Das Essen zählt bei „Gegessen“ und kann eine geplante Mahlzeit ersetzen. |
+| **📸 Essen fotografieren** | Mittlerer Knopf, dann eine von drei Arten: **Essen** (Teller, Obst, Snack), **Barcode** (Packung) oder **Tabelle** (Nährwerttabelle fotografieren). Alles läuft offline am Handy. Die App kombiniert Barcode, Text auf der Packung, Nährwerttabelle und zwei KI-Modelle (Google AIY Food mit ≈ 2.000 Gerichten, MobileNetV3 für Obst und Gemüse, jeweils auf mehreren Bildausschnitten). Das Ergebnis lässt sich über „Oder ist es …“ korrigieren. **Die App lernt deine Korrekturen** und schlägt es beim nächsten Mal zuerst vor. Wer nicht fotografieren will, sucht per Namen („Haribo“, „Beef Tatar“, „Cola“) oder nimmt Favoriten und Verlauf. Danach Menge einstellen (Packung, Portion oder Gramm) und „Eintragen“. Das zählt bei „Gegessen“ und kann eine geplante Mahlzeit ersetzen. |
+| **🍬 Nährwerttabelle & Zucker** | Wie auf der Packung: Brennwert (kJ und kcal), Fett, gesättigte Fette, Kohlenhydrate, davon **Zucker**, Ballaststoffe, Eiweiß, Salz, je 100 g und je Portion, mit Ampelpunkten (grün/gelb/rot nach UK-FSA) und % der Referenzmenge. Dazu eine Zucker-Karte: Gramm, **Zuckerwürfel** (1 Würfel = 3 g), Anteil an der WHO-Höchstmenge (50 g/Tag) und der Tagesstand. Nutri-Score A–E (aus Open Food Facts oder geschätzt). Auf „Heute“ steht eine Zucker-Zeile für den Tag. |
+| **Barcode & eigene Produkte** | EAN scannen: zuerst die Offline-Datenbank, dann (mit Internet) Open Food Facts live. Ist ein Produkt unbekannt, fotografierst du die Nährwerttabelle. Die App liest die Werte aus und speichert sie als eigenes Produkt. Favoriten (★) und Verlauf gibt es auch. |
 | **Kassenbon** | Foto machen. Die Texterkennung läuft **offline am Handy** (Google ML Kit) und erkennt Markt, Datum, Artikel, Mengen und Rabatte („Aktion −25 %“, jö-Bonus). Danach prüfst du die Liste kurz und speicherst. |
 | **Preise & Aktionen lernen** | Die App merkt sich pro Markt den Normalpreis und wann etwas in Aktion ist. Nach ein paar Bons schätzt sie auch den Aktions-Rhythmus. Gerichte mit Zutaten, die gerade in Aktion sind, kommen eher auf den Plan. |
 | **Einkauf** | Wocheneinkauf im Kassazettel-Stil mit Häkchen. Der Markt-Vergleich zeigt, wo der Einkauf am günstigsten ist. |
@@ -29,7 +33,7 @@ Alle Daten bleiben auf dem Handy.
 
 ## Installieren
 
-1. `YouByWhatYouEat-1.2.0.apk` aufs Android-Handy laden.
+1. `YouByWhatYouEat-1.3.0.apk` aufs Android-Handy laden.
 2. Antippen. Fragt Android nach „Unbekannte Apps installieren“, für den Browser oder Dateimanager erlauben.
 3. App öffnen und Benachrichtigungen erlauben. Updates installieren sich über die alte Version drüber, die Daten bleiben erhalten.
 
@@ -39,7 +43,7 @@ Voraussetzungen: Node 22, JDK 21, Android SDK (Plattform 36).
 
 ```bash
 npm install
-./scripts/get-food-model.sh   # Foto-KI-Modell (21 MB) laden
+./scripts/get-food-model.sh   # Foto-KI-Modelle (21 + 10 MB) laden
 npm run build:web          # src/ → www/app.js (esbuild)
 npx cap sync android
 cd android && ./gradlew assembleRelease
@@ -52,9 +56,25 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - `src/data.js` – Zutaten (Basispreise, Kassenbon-Stichwörter), Gerichte, Märkte
 - `src/sport.js` – Laufplan, Pulszonen, Mini-Workouts, Übungsanleitungen, Timer-Abläufe
 - `src/engine.js` – Kalorienbedarf (Mifflin-St Jeor), Nährwerte aus Zutaten, gelernte Preise, Plan mit Abwechslung, Sterne-Logik, Einkaufsliste
-- `src/foodai.js`, `src/foodkb.js` – Foto-KI: Ergebnis des Modells → Gericht, Nährwerte, Einschätzung, Suche
+- `src/foodai.js` – Erkennung zusammenführen (Barcode → Packungstext → Nährwerttabelle → Gericht-KI → gelernte Korrekturen), Suche, Favoriten, Verlauf
+- `src/foodkb.js` (2.024 AIY-Klassen, 111 Gerichte mit Werten), `src/generic.js` (200 Grundnahrungsmittel), `src/inet.js` (ImageNet-Namen), `www/data/products.json` (54.000 Produkte)
+- `src/labelparse.js` – Nährwerttabelle aus Texterkennung lesen (je 100 g / je Portion, OCR-Fehler korrigieren)
+- `src/nutri.js` – Ampel, Zuckerwürfel, %-Referenzmenge, Nutri-Score
 - `src/receipt.js` – Bon-Zeilen aus der Texterkennung zusammensetzen und auswerten
 - `src/screens.js`, `src/ui.js`, `www/styles.css` – Oberfläche und Animationen
 - `src/native.js` – Kamera, Benachrichtigungen, Vibration, Zurück-Taste
 - `android/app/src/main/java/.../ReceiptOcrPlugin.java` – Texterkennung (ML Kit)
-- `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung (ML Kit + AIY Food V1, Apache 2.0)
+- `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung: Barcode, Text, AIY Food V1 und MobileNetV3 (ML Kit, Apache 2.0)
+- `scripts/data/` – erzeugt Produktdatenbank und Lebensmittelliste neu (siehe unten)
+
+## Datenquellen
+
+- **Open Food Facts** (Produkte, Nährwerte, Nutri-Score), ODbL-Lizenz, Quelle ist auch in der App genannt. Von Nutzern erfasst, daher können Werte abweichen.
+- **USDA FoodData Central, SR Legacy** (Grundnahrungsmittel), gemeinfrei.
+- Eigene Richtwerte für Gerichte und regionale Sachen sind in der App mit „Richtwert“ gekennzeichnet.
+
+Neu erzeugen (Download-Ordner `scripts/data/work/` oder `YBWYE_DATA`): `process_off.py` filtert den Open-Food-Facts-CSV-Dump (`off.csv.gz`), `build_products.py` schreibt `www/data/products.json`, `gen_generic.py --write` erzeugt `src/generic.js` aus dem USDA-Datensatz (`usda/…`), `gen_foodkb.py` die Klassenliste des Gericht-Modells.
+
+## Grenzen
+
+Die Erkennung schätzt nur. Die Portionsgröße kann sie aus einem Foto nicht messen, und bei Selbstgekochtem sind die Werte Richtwerte. Verpackte Produkte erkennst du am sichersten über Barcode oder Nährwerttabelle.
