@@ -12,6 +12,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.4:** **Strava-Anbindung.** Nach dem Laufen die App öffnen – die Läufe kommen von Strava in Training, Tagesbilanz und Serie. Alternativ GPX/TCX-Dateien einlesen.
 
+**Version 1.4.1:** Zahlen-Animation (Kalorien, Ring) zeigt in den ersten Millisekunden keine falschen Werte mehr.
+
 ## Was die App kann
 
 | Bereich | Funktion |
@@ -36,7 +38,7 @@ Alle Daten bleiben auf dem Handy.
 
 ## Installieren
 
-1. `YouByWhatYouEat-1.4.0.apk` aufs Android-Handy laden.
+1. `YouByWhatYouEat-1.4.1.apk` aufs Android-Handy laden.
 2. Antippen. Fragt Android nach „Unbekannte Apps installieren“, für den Browser oder Dateimanager erlauben.
 3. App öffnen und Benachrichtigungen erlauben. Updates installieren sich über die alte Version drüber, die Daten bleiben erhalten.
 
@@ -70,6 +72,7 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - `android/app/src/main/java/.../ReceiptOcrPlugin.java` – Texterkennung (ML Kit)
 - `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung: Barcode, Text, AIY Food V1 und MobileNetV3 (ML Kit, Apache 2.0)
 - `android/app/src/main/java/.../NetPlugin.java` – Netzwerk nur zu www.strava.com (die Strava-Schnittstelle lässt keine Aufrufe aus dem WebView zu) und Link-Öffnen
+- `scripts/trailer/`, `scripts/trailer2/` – Trailer-Aufnahme im Browser (Playwright + Chrome-Screencast), Schnitt (ffmpeg) und selbst erzeugte Musik
 - `scripts/data/` – erzeugt Produktdatenbank und Lebensmittelliste neu (siehe unten)
 
 ## Datenquellen

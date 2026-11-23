@@ -159,8 +159,8 @@ function countUps(el) {
     const to = parseFloat(n.dataset.count), d = +(n.dataset.dec || 0), suf = n.dataset.suf || '';
     const fmt = v => (d ? v.toFixed(d).replace('.', ',') : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')) + suf;
     if (reduced()) { n.textContent = fmt(to); return; }
-    const t0 = performance.now(), dur = 900;
-    const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4); n.textContent = fmt(to * e); if (p < 1) requestAnimationFrame(step); };
+    const t0 = performance.now(), dur = 900;   // p nie unter 0: das erste Bild kann einen älteren Zeitstempel haben
+    const step = t => { const p = Math.max(0, Math.min(1, (t - t0) / dur)), e = 1 - Math.pow(1 - p, 4); n.textContent = fmt(to * e); if (p < 1) requestAnimationFrame(step); };
     requestAnimationFrame(step);
   });
 }
