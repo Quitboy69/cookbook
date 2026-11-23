@@ -1,8 +1,6 @@
-/* Ablauf (Kino-Trailer):
-   1) im Ordner www/ einen Server starten: python3 -m http.server 8765 --bind 127.0.0.1
-   2) node scripts/trailer2/capture.cjs <Arbeitsordner>   → Rohbilder (3x, Dunkelmodus) + frames.json + markers.json
-   3) Arbeitsordner = Ordner dieses Skripts oder kopieren; edit.py --render, edit.py --assemble (Schnitt aufs 120-BPM-Raster)
-   4) PYTHONPATH=<scipy> python3 music.py  (Musik aus cues.json), dann ffmpeg-mux (siehe edit.py)
+/* Ablauf: 1) in www/ einen Server starten (python3 -m http.server 8765 --bind 127.0.0.1)  2) node capture.cjs <Ordner>
+   3) python3 edit.py --render, dann --assemble  4) PYTHONPATH=<scipy> python3 music2.py, dann Ton mit ffmpeg dazumischen.
+   Aufnahme bewusst in 2x mit vollen Bildraten (3x ruckelt: nur ~7 Bilder/Sek.).
    Trailer 2 – Rohaufnahme: App im Dunkelmodus in Handygröße (3x), mit Markern für den Schnitt.
    Kein Cursor: Fokus entsteht durch Spotlight, kinetische Texte und Wort-Karten. Kamera/Strava sind Simulationen. */
 const { chromium } = require('playwright');
@@ -18,7 +16,7 @@ let T0 = Date.now();
 const log = m => console.log(((Date.now() - T0) / 1000).toFixed(1).padStart(6) + 's  ' + m);
 
 (async () => {
-  const browser = await chromium.launch({ args: ['--force-device-scale-factor=3', '--window-size=390,844'] });
+  const browser = await chromium.launch({ args: ['--force-device-scale-factor=2', '--window-size=390,844'] });
   const ctx = await browser.newContext({ viewport: null, colorScheme: 'dark' });
   await ctx.addInitScript(({ icon }) => {
     const css = `
@@ -184,7 +182,7 @@ const log = m => console.log(((Date.now() - T0) / 1000).toFixed(1).padStart(6) +
   const step = async (name, fn) => { log('▶ ' + name); try { await fn(); } catch (e) { errs.push('SCENE ' + name + ': ' + String(e.message).split('\n')[0]); log('!! ' + name + ' – ' + String(e.message).split('\n')[0]); try { await unspot(); await page.evaluate(() => window.__sheetClose && window.__sheetClose()); } catch (x) { /* egal */ } } };
 
   await page.goto('http://127.0.0.1:8765/index.html');
-  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 90, maxWidth: 1170, maxHeight: 2532, everyNthFrame: 2 });
+  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 780, maxHeight: 1688, everyNthFrame: 1 });
   T0 = Date.now();
   mark('intro.start');
   await wait(4300);

@@ -4,7 +4,7 @@ import json, subprocess, sys, os, bisect, math
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-W_SRC, H_SRC = 1170, 2532
+W_SRC, H_SRC = 780, 1688
 W_OUT, H_OUT = 1080, 2340
 BEAT = 0.5   # 120 BPM
 FPS = 30
@@ -84,8 +84,8 @@ def render(i):
     lst = f"{HERE}/shots/{i:02d}.txt"; slice_list(s['a'], s['a'] + s['raw'], lst)
     z0, z1, cx, cy = s['zoom']; T = s['D']
     zexpr = f"({z0}+({z1}-{z0})*min(t/{T:.3f},1))"
-    vf = (f"setpts=PTS/{s['speed']:.5f},fps={FPS},"
-          f"scale=w='trunc({W_SRC}*{zexpr}/2)*2':h='trunc({H_SRC}*{zexpr}/2)*2':eval=frame:flags=bicubic,"
+    vf = (f"setpts=PTS/{s['speed']:.5f},framerate=fps={FPS},"
+          f"format=yuv444p,scale=w='trunc({W_SRC}*{zexpr})':h='trunc({H_SRC}*{zexpr})':eval=frame:flags=bicubic,"
           f"crop={W_SRC}:{H_SRC}:x='clip({cx}*in_w-{W_SRC/2},0,in_w-{W_SRC})':y='clip({cy}*in_h-{H_SRC/2},0,in_h-{H_SRC})',"
           f"scale={W_OUT}:{H_OUT}:flags=lanczos,"
           f"eq=contrast=1.10:saturation=1.10:brightness=-0.015:gamma=0.97,format=yuv420p,"
@@ -98,7 +98,7 @@ def render(i):
     return out
 
 if '--render' in sys.argv:
-    with ThreadPoolExecutor(2) as ex: outs = list(ex.map(render, range(len(SHOTS))))
+    with ThreadPoolExecutor(3) as ex: outs = list(ex.map(render, range(len(SHOTS))))
     print('Shots gerendert:', len(outs))
 
 # Cues für die Musik
