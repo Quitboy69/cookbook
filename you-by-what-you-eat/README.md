@@ -10,6 +10,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.3:** deutlich bessere Erkennung und eine Nährwerttabelle wie auf der Packung, mit **Zucker**: Barcode-Scan, Packungstext, Nährwerttabelle lesen, über 54.000 Produkte (Haribo, Getränke, Snacks …) und 200 Grundnahrungsmittel (Spaghetti, Beef Tatar …) offline im Handy.
 
+**Version 1.4:** **Strava-Anbindung.** Nach dem Laufen die App öffnen – die Läufe kommen von Strava in Training, Tagesbilanz und Serie. Alternativ GPX/TCX-Dateien einlesen.
+
 ## Was die App kann
 
 | Bereich | Funktion |
@@ -26,6 +28,7 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 | **Einkauf** | Wocheneinkauf im Kassazettel-Stil mit Häkchen. Der Markt-Vergleich zeigt, wo der Einkauf am günstigsten ist. |
 | **Laufen** | Laufplan nach Niveau: Einsteiger 8 Wochen Lauf-Geh-Intervalle, dann Mittel und Fortgeschritten mit lockerem Lauf, Intervallen und langem Lauf. Jede Einheit hat Pulszonen-Profil, km- und kcal-Schätzung und einen geführten Timer. Die Ansagen kommen als Benachrichtigung, auch bei ausgeschaltetem Bildschirm. |
 | **Keine Lust zu laufen?** | Dann gibt’s eines von 4 Mini-Workouts ohne Geräte, jeweils 12 Min: Ganzkörper, Beine & Po, Core, Cardio. Jede Übung ist Schritt für Schritt beschrieben, mit leichterer Variante, und ein Timer führt durch Übung und Pause. Das zählt zur Serie. |
+| **🧡 Strava** | Läufe nach dem Laufen einlesen: Strecke, Zeit, Pace, Puls, Höhenmeter und Kalorien. Einmalig bei Strava eine eigene API-Anwendung anlegen (strava.com/settings/api, Callback-Domain `localhost`), Client-ID und Secret in der App eintragen, „Mit Strava verbinden“ tippen. Danach holt die App neue Läufe beim Öffnen automatisch (oder per „Jetzt Läufe holen“). Mehrere Läufe am Tag werden zusammengerechnet, nichts wird doppelt gezählt, „Rückgängig“ nimmt einen Lauf wieder raus. Klappt die Rückkehr nach der Freigabe nicht, gibt es die manuelle Variante (Adresse einfügen). Ohne Strava-Zugang: **GPX/TCX-Datei einlesen** (Strecke, Zeit, Pace und Höhenmeter werden selbst berechnet). Schlüssel und Token bleiben auf dem Handy und sind nicht im Backup. |
 | **Erinnerungen** | 07:00 Frühstück, 18:00 „Zeit zum Kochen“, 20:30 „Schon gegessen? Bewerten“, optional Trinken, außerdem Einkaufstag + Bon scannen. Die Zeiten sind einstellbar. An Lauftagen kommt zur Laufzeit eine Erinnerung mit „Los geht’s“ oder „Lieber Workout“, 2 h später nachgefragt, falls noch nichts erledigt ist. |
 | **Ich** | Profil, Ziel, Trainingstage, Gewichtsverlauf mit Einschätzung, alle Rezepte, Trinkplan, Hell/Dunkel sowie Backup kopieren und einspielen. |
 
@@ -33,7 +36,7 @@ Alle Daten bleiben auf dem Handy.
 
 ## Installieren
 
-1. `YouByWhatYouEat-1.3.0.apk` aufs Android-Handy laden.
+1. `YouByWhatYouEat-1.4.0.apk` aufs Android-Handy laden.
 2. Antippen. Fragt Android nach „Unbekannte Apps installieren“, für den Browser oder Dateimanager erlauben.
 3. App öffnen und Benachrichtigungen erlauben. Updates installieren sich über die alte Version drüber, die Daten bleiben erhalten.
 
@@ -60,11 +63,13 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - `src/foodkb.js` (2.024 AIY-Klassen, 111 Gerichte mit Werten), `src/generic.js` (200 Grundnahrungsmittel), `src/inet.js` (ImageNet-Namen), `www/data/products.json` (54.000 Produkte)
 - `src/labelparse.js` – Nährwerttabelle aus Texterkennung lesen (je 100 g / je Portion, OCR-Fehler korrigieren)
 - `src/nutri.js` – Ampel, Zuckerwürfel, %-Referenzmenge, Nutri-Score
+- `src/strava.js` – Strava-Anmeldung (OAuth), Token erneuern, Läufe holen und dem Tag zuordnen; `src/trackfile.js` liest GPX/TCX
 - `src/receipt.js` – Bon-Zeilen aus der Texterkennung zusammensetzen und auswerten
 - `src/screens.js`, `src/ui.js`, `www/styles.css` – Oberfläche und Animationen
 - `src/native.js` – Kamera, Benachrichtigungen, Vibration, Zurück-Taste
 - `android/app/src/main/java/.../ReceiptOcrPlugin.java` – Texterkennung (ML Kit)
 - `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung: Barcode, Text, AIY Food V1 und MobileNetV3 (ML Kit, Apache 2.0)
+- `android/app/src/main/java/.../NetPlugin.java` – Netzwerk nur zu www.strava.com (die Strava-Schnittstelle lässt keine Aufrufe aus dem WebView zu) und Link-Öffnen
 - `scripts/data/` – erzeugt Produktdatenbank und Lebensmittelliste neu (siehe unten)
 
 ## Datenquellen
@@ -74,6 +79,13 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - Eigene Richtwerte für Gerichte und regionale Sachen sind in der App mit „Richtwert“ gekennzeichnet.
 
 Neu erzeugen (Download-Ordner `scripts/data/work/` oder `YBWYE_DATA`): `process_off.py` filtert den Open-Food-Facts-CSV-Dump (`off.csv.gz`), `build_products.py` schreibt `www/data/products.json`, `gen_generic.py --write` erzeugt `src/generic.js` aus dem USDA-Datensatz (`usda/…`), `gen_foodkb.py` die Klassenliste des Gericht-Modells.
+
+## Strava: Hinweise
+
+- Läufe werden nur geholt, wenn die App geöffnet wird (oder per Knopf), nicht im Hintergrund.
+- Strava begrenzt Abfragen (100 pro 15 Minuten). Das reicht für eine Person locker.
+- Die Rückkehr nach der Freigabe nutzt den Link `ybwye://localhost` (Intent-Filter in der Manifest-Datei). Wenn Strava diese Adresse ablehnt, hilft die manuelle Variante.
+- Läufe sind Strava-Daten des eigenen Kontos (nur Lesezugriff). „Powered by Strava“.
 
 ## Grenzen
 

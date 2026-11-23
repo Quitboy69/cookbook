@@ -7,8 +7,8 @@ android {
         applicationId "at.youbywhatyoueat.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "1.3.0"
+        versionCode 5
+        versionName "1.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // Handys: arm64 + ältere arm (kein x86_64-Emulator nötig)

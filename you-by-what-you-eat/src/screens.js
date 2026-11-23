@@ -7,6 +7,7 @@ import { ico, esc, ring } from './ui.js';
 import { isNative } from './native.js';
 import * as FA from './foodai.js';
 import * as N from './nutri.js';
+import * as Strava from './strava.js';
 
 const { fmtInt, dec, eur, lit, DAYS, DS, MONTHS } = E;
 export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null, rz: 'alle', timer: null };
@@ -369,11 +370,24 @@ function zoneBar(blocks) {
   const tot = blocks.reduce((s, b) => s + b.sec, 0);
   return `<div class="zbar">${blocks.map(b => `<i style="flex:${b.sec};--c:${SP.ZONES[b.z].c};--hh:${10 + b.z * 9}px" title="${esc(b.label)}"></i>`).join('')}</div><div class="zbar-l"><span>0′</span><span>${Math.round(tot / 120)}′</span><span>${Math.round(tot / 60)}′</span></div>`;
 }
+
+/* ---------- Läufe: Pace/Quelle ---------- */
+const paceStr = p => { let m = Math.floor(p), sc = Math.round((p - m) * 60); if (sc === 60) { m++; sc = 0; } return m + ':' + String(sc).padStart(2, '0'); };
+function actDetail(a) {
+  if (!a || !a.done || a.type !== 'run') return '';
+  const bits = [];
+  if (a.pace) bits.push('Ø ' + paceStr(a.pace) + ' /km');
+  if (a.hr) bits.push('♥ ' + a.hr);
+  if (a.elev) bits.push('↗ ' + a.elev + ' m');
+  const src = a.src === 'strava' ? '🧡 Von Strava' : a.src === 'file' ? '📄 Aus Datei' : '';
+  const line = [src, ...bits].filter(Boolean).join(' · ');
+  return line ? `<p class="src-line">${esc(line)}${a.name && a.src ? ' · ' + esc(a.name) : ''}</p>` : '';
+}
 function weekRow(k, t) {
-  const a = SP.plannedActivity(k), gym = !a && E.isTrain(k), past = k < t;
+  const a = SP.plannedActivity(k), x = !a && S.act[k] && S.act[k].done && S.act[k].type === 'run' ? S.act[k] : null, gym = !a && !x && E.isTrain(k), past = k < t;
   return `<button class="wr tap${k === t ? ' today' : ''}" ${a ? `data-go="${a.kind === 'run' ? '#/run/' + k : '#/workout/' + a.id + '?d=' + k}"` : ''}><span class="wr-d"><small>${DS[E.wd(k)]}</small><b>${E.dateOf(k).getDate()}</b></span>
-    <span class="wr-t">${a ? (a.kind === 'run' ? `<b>${esc(a.session.name)}</b><small>${a.min} Min · Z${a.session.zone} · ≈ ${lit(a.session.km)} km</small>` : `<b>${SP.WORKOUTS[a.id].emoji} ${esc(SP.WORKOUTS[a.id].name)}</b><small>Mini-Workout statt Lauf · ${a.min} Min</small>`) : gym ? '<b>Krafttraining</b><small>dein Trainingstag</small>' : '<b class="mute">Ruhetag</b><small>Regeneration ist Training</small>'}</span>
-    <span class="wr-s">${a ? (a.done ? '<i class="st ok">' + ico('check') + '</i>' : past ? '<i class="st miss">–</i>' : '<i class="st plan">' + ico(a.kind === 'run' ? 'run' : 'dumbbell') + '</i>') : ''}</span></button>`;
+    <span class="wr-t">${x ? `<b>Extra-Lauf${x.src === 'strava' ? ' 🧡' : ''}</b><small>${lit(x.km)} km · ${x.min} Min${x.pace ? ' · ' + paceStr(x.pace) + ' /km' : ''}</small>` : a ? (a.kind === 'run' ? `<b>${esc(a.session.name)}</b><small>${a.min} Min · Z${a.session.zone} · ≈ ${lit(a.session.km)} km</small>` : `<b>${SP.WORKOUTS[a.id].emoji} ${esc(SP.WORKOUTS[a.id].name)}</b><small>Mini-Workout statt Lauf · ${a.min} Min</small>`) : gym ? '<b>Krafttraining</b><small>dein Trainingstag</small>' : '<b class="mute">Ruhetag</b><small>Regeneration ist Training</small>'}</span>
+    <span class="wr-s">${x ? '<i class="st ok">' + ico('check') + '</i>' : a ? (a.done ? '<i class="st ok">' + ico('check') + '</i>' : past ? '<i class="st miss">–</i>' : '<i class="st plan">' + ico(a.kind === 'run' ? 'run' : 'dumbbell') + '</i>') : ''}</span></button>`;
 }
 export function training() {
   const t = E.todayKey(), P = S.profile;
@@ -383,12 +397,13 @@ export function training() {
   let nextRun = null; for (let i = 1; i <= 7; i++) { const k = E.addDays(t, i); if (SP.isRunDay(k)) { nextRun = k; break; } }
   let today;
   if (act && act.kind === 'run') {
-    const r = act.session;
+    const r = act.session, A = act.done ? SP.actOf(t) : null;
     today = `<article class="card run-card rise">
       <div class="rc-top"><span class="rc-emo">${r.emoji}</span><div><p class="kicker">Heute · ${P.runTime} · Woche ${r.week}</p><h2>${esc(r.name)}</h2></div>${act.done ? '<span class="badge ok">✓ erledigt</span>' : ''}</div>
-      <div class="stats3"><span>${ico('clock')}<b>${r.min} Min</b></span><span>${ico('run')}<b>≈ ${lit(r.km)} km</b></span><span>${ico('fire')}<b>≈ ${r.kcal} kcal</b></span></div>
-      <button class="tap zwrap" data-go="#/run/${t}">${zoneBar(r.blocks)}</button>
-      <p class="rc-desc">${esc(r.desc)}</p>
+      <div class="stats3"><span>${ico('clock')}<b>${A ? A.min : r.min} Min</b></span><span>${ico('run')}<b>${A && A.km ? lit(A.km) : '≈ ' + lit(r.km)} km</b></span><span>${ico('fire')}<b>${A ? '' : '≈ '}${A ? A.kcal : r.kcal} kcal</b></span></div>
+      ${actDetail(A)}
+      ${A && A.src ? `<p class="rc-desc">Geplant war „${esc(r.name)}“. Dein echter Lauf ist eingetragen – die Serie läuft weiter 🔥</p>` : `<button class="tap zwrap" data-go="#/run/${t}">${zoneBar(r.blocks)}</button>
+      <p class="rc-desc">${esc(r.desc)}</p>`}
       ${act.done ? `<button class="btn ghost wide tap" data-act="act-undo" data-k="${t}">Rückgängig</button>` : `
       <div class="rc-btns"><button class="btn big tap" data-go="#/timer/run/${t}">${ico('play')}Lauf starten</button><button class="btn ghost tap" data-act="run-done" data-k="${t}">${ico('check')}Gelaufen</button></div>
       <button class="nope tap" data-act="no-run" data-k="${t}">😮‍💨 Keine Lust zu laufen? <b>Dann Mini-Workout</b></button>`}
@@ -403,6 +418,14 @@ export function training() {
       <div class="rc-btns"><button class="btn big tap" data-go="#/timer/workout/${act.id}?d=${t}">${ico('play')}Workout starten</button><button class="btn ghost tap" data-go="#/workout/${act.id}?d=${t}">${ico('book')}Übungen</button></div>
       <button class="nope tap" data-act="act-undo" data-k="${t}">Doch lieber laufen? <b>Zurück zum Lauf</b></button>`}
     </article>`;
+  } else if (S.act[t] && S.act[t].done && S.act[t].type === 'run') {
+    const A = S.act[t];
+    today = `<article class="card run-card rise">
+      <div class="rc-top"><span class="rc-emo">🏃</span><div><p class="kicker">Heute · zusätzlich</p><h2>Extra-Lauf</h2></div><span class="badge ok">✓ erledigt</span></div>
+      <div class="stats3"><span>${ico('clock')}<b>${A.min} Min</b></span><span>${ico('run')}<b>${lit(A.km)} km</b></span><span>${ico('fire')}<b>${A.kcal} kcal</b></span></div>
+      ${actDetail(A)}
+      <p class="rc-desc">Heute war eigentlich kein Lauf geplant – umso besser. Die Kalorien zählen zu deinem Tagesziel dazu.</p>
+      <button class="btn ghost wide tap" data-act="act-undo" data-k="${t}">Rückgängig</button></article>`;
   } else {
     const nr = nextRun ? SP.runSession(nextRun) : null;
     today = `<article class="card run-card rest rise"><div class="rc-top"><span class="rc-emo">${E.isTrain(t) ? '🏋️' : '🧘'}</span><div><p class="kicker">Heute</p><h2>${E.isTrain(t) ? 'Krafttraining-Tag' : 'Kein Lauf geplant'}</h2></div></div>
@@ -427,6 +450,7 @@ export function training() {
     <div class="wo-grid rise">${Object.entries(SP.WORKOUTS).map(([id, w]) => `<button class="wo-card tap" style="--h:${w.hue}" data-go="#/workout/${id}"><span class="wo-e">${w.emoji}</span><b>${esc(w.name)}</b><small>${SP.workoutMinutes(id)} Min · ${w.focus}</small></button>`).join('')}</div>
     <div class="list rise">
       <button class="list-row tap" data-go="#/profile"><span class="lr-ico">${ico('week')}</span><span><b>Lauftage & Niveau</b><small>${(P.run || []).map(i => DS[i]).join(', ') || 'keine'} · ${P.runTime} · ${SP.LEVELS[P.runLevel || 'einsteiger'].name}</small></span>${ico('chev')}</button>
+      <button class="list-row tap" data-go="#/strava"><span class="lr-ico st-ico">${ico('run')}</span><span><b>Strava</b><small>${Strava.connected() ? 'Verbunden · Läufe nach dem Laufen einlesen' : 'Läufe von Strava oder aus einer Datei einlesen'}</small></span>${ico('chev')}</button>
       <button class="list-row tap" data-go="#/info/zonen"><span class="lr-ico">${ico('heart')}</span><span><b>Pulszonen erklärt</b><small>Wie schnell ist „locker“?</small></span>${ico('chev')}</button>
     </div>
   </div>` };
@@ -446,7 +470,7 @@ export function runDetail(k) {
     <article class="card rise"><h3 class="c-h">Ablauf</h3>${zoneBar(r.blocks)}<p class="lede">${esc(r.desc)}</p><ol class="blocks">${list.join('')}</ol></article>
     <article class="card rise"><h3 class="c-h">${ico('heart', 'xs')} So fühlt sich das an</h3><ul class="facts">${[...new Set(r.blocks.map(b => b.z))].sort().map(z => `<li><b style="color:${SP.ZONES[z].c}">${SP.ZONES[z].name}:</b> ${SP.ZONES[z].txt}</li>`).join('')}</ul></article>
     <article class="card rise"><h3 class="c-h">Tipps</h3><ul class="facts"><li>0,3–0,5 L Wasser 1–2 h vorher, danach nachtrinken.</li><li>Nicht mit vollem Bauch – 2 h nach dem Essen ist ideal, sonst eine Banane vorher.</li><li>Lieber zu langsam als zu schnell: Wenn du nicht mehr reden kannst, Tempo raus.</li><li>Seitenstechen? Gehen, tief ausatmen, dann weiter.</li><li>Danach: Mahlzeit mit Eiweiß innerhalb von 2 h.</li></ul></article>
-    ${done ? `<article class="card ok-card rise">${ico('check')}<div><b>Erledigt</b><p>${a.km ? lit(a.km) + ' km · ' : ''}${a.min} Min · ${a.kcal} kcal</p><button class="btn sm ghost tap" data-act="act-undo" data-k="${k}">Rückgängig</button></div></article>` : `
+    ${done ? `<article class="card ok-card rise">${ico('check')}<div><b>Erledigt</b><p>${a.km ? lit(a.km) + ' km · ' : ''}${a.min} Min · ${a.kcal} kcal</p>${actDetail(a)}<button class="btn sm ghost tap" data-act="act-undo" data-k="${k}">Rückgängig</button></div></article>` : `
     <div class="rc-btns rise"><button class="btn big tap" data-go="#/timer/run/${k}">${ico('play')}Lauf starten</button><button class="btn ghost tap" data-act="run-done" data-k="${k}">${ico('check')}Gelaufen</button></div>
     <button class="nope tap rise" data-act="no-run" data-k="${k}">😮‍💨 Keine Lust? <b>Dann ${esc(SP.WORKOUTS[wid].name)} (${SP.workoutMinutes(wid)} Min)</b></button>`}
   </div>` };
@@ -566,6 +590,13 @@ export function info(topic) {
       <article class="card rise"><h3 class="c-h">Keine Lust?</h3><p class="lede">Kein Problem – aber nix tun gilt nicht 😉. Tippe auf „Keine Lust zu laufen“ und du bekommst ein Mini-Workout (10–13 Min, ohne Geräte) mit Timer und Anleitung. Die Serie bleibt erhalten.</p></article>
       <article class="card rise"><h3 class="c-h">Serie 🔥</h3><p class="lede">Jeder geplante Lauftag, an dem du läufst oder das Workout machst, zählt zur Serie. Aktuell: <b>${SP.streak()}</b>.</p></article>`);
     }
+    case 'strava':
+      return G('Strava', '🧡', 20, `
+      <article class="card rise"><p class="lede">Die App holt deine Läufe aus Strava, <b>nachdem du gelaufen bist</b>: Strava-App oder Uhr aufzeichnen lassen, danach die App öffnen – der Lauf steht im Training, die verbrannten Kalorien zählen zum Tagesziel und die Serie läuft weiter.</p></article>
+      <article class="card rise"><h3 class="c-h">So funktioniert’s</h3><ul class="facts"><li>Du legst <b>einmalig</b> bei Strava eine eigene kleine „API-Anwendung“ an (kostenlos, 3 Minuten) und trägst Client-ID und Secret in der App ein.</li><li>Die App fragt Strava nur nach <b>deinen eigenen Aktivitäten</b> (Lesezugriff). Sie ändert nichts bei Strava.</li><li>Übernommen werden Läufe, Trail- und virtuelle Läufe: Strecke, Zeit, Pace, Puls, Höhenmeter und Kalorien.</li><li>Gleiche Läufe werden nie doppelt gezählt. Mit „Rückgängig“ nimmst du einen Lauf wieder raus.</li></ul></article>
+      <article class="card rise"><h3 class="c-h">Privat & sicher</h3><ul class="facts"><li>Schlüssel und Zugangs-Token bleiben nur auf diesem Handy und kommen nicht ins Backup.</li><li>Es gibt keinen Server dazwischen: Die App spricht direkt mit Strava.</li><li>Unter „Trennen“ löschst du die Verbindung. Bei Strava selbst kannst du den Zugriff unter Einstellungen → Meine Apps entziehen.</li></ul></article>
+      <article class="card rise"><h3 class="c-h">Ohne Strava-Zugang</h3><p class="lede">Du kannst auch eine <b>GPX- oder TCX-Datei</b> einlesen (bei Strava im Browser: Aktivität → ⋯ → „GPX exportieren“). Die App rechnet Strecke, Zeit, Pace und Höhenmeter selbst aus.</p></article>
+      <article class="card rise"><h3 class="c-h">Grenzen</h3><ul class="facts"><li>Strava erlaubt nur eine begrenzte Zahl von Abfragen (100 pro 15 Minuten) – für dich reicht das locker.</li><li>Kalorien kommen von Strava. Fehlen sie, schätzt die App ≈ 1 kcal je kg und km.</li><li>Die App holt Läufe nur, wenn du sie öffnest (oder mit „Jetzt Läufe holen“) – nicht im Hintergrund.</li></ul></article>`);
     case 'zonen':
       return G('Pulszonen', '❤️', 0, `
       <article class="card rise"><p class="lede">Ohne Pulsuhr hilft der <b>Sprechtest</b>: Wie gut kannst du beim Laufen noch reden?</p>
@@ -827,6 +858,7 @@ export function ich() {
     <h2 class="sec rise">Einstellungen</h2>
     <div class="list">
       ${row('#/profile', 'user', 'Profil, Ziel & Laufen', (P.run || []).length + '× Laufen · ' + (P.train || []).length + '× Kraft · ' + P.persons + ' Personen')}
+      ${row('#/strava', 'run', 'Strava', Strava.connected() ? 'Verbunden · ' + Strava.visible().length + ' Läufe eingelesen' : 'Läufe nach dem Laufen einlesen')}
       ${row('#/notif', 'bell', 'Erinnerungen', 'Kochen, Essen bewerten, Laufen, Einkauf')}
       ${row('#/ratings', 'star', 'Meine Bewertungen', nRated + ' Gerichte bewertet' + (nBlocked ? ' · ' + nBlocked + ' aussortiert' : ''))}
       ${row('#/trinken', 'drop', 'Trinkplan', 'Ruhetag ≈ ' + lit(T.water) + ' L · Training ≈ ' + lit(T.water + 1) + ' L')}
@@ -841,7 +873,7 @@ export function ich() {
       ${row('', 'edit', 'Backup einspielen', 'Text aus einem Backup einfügen', 'restore')}
       ${row('', 'trash', 'Alles zurücksetzen', 'Plan, Bons, Bewertungen löschen', 'reset')}
     </div>
-    <p class="about rise">You By What You Eat · Version 1.1.0<br>Alle Daten bleiben auf deinem Handy.</p>
+    <p class="about rise">You By What You Eat · Version 1.4.0<br>Alle Daten bleiben auf deinem Handy.</p>
   </div>` };
 }
 
@@ -1170,4 +1202,67 @@ function labelForm(F) {
     </article>
     <div class="sticky-save"><button class="btn ghost tap" data-act="foodcam" data-mode="label">${ico('camera')}Nochmal</button><button class="btn big tap" data-act="lf-use">${ico('check')}Weiter</button></div>
   </div>` };
+}
+
+
+/* ---------- Strava ---------- */
+export function strava() {
+  const s = S.strava, on = Strava.connected(), runs = Strava.visible().slice(0, 12);
+  const when = ms => { const d = new Date(ms); return relDay(E.keyOf(d)) + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  const runLi = r => `<li><span class="sr-d"><small>${DS[E.wd(r.date)]}</small><b>${E.dateOf(r.date).getDate()}</b></span><span class="sr-t"><b>${lit(r.km)} km · ${r.min} Min</b><small>${r.sec && r.km ? 'Ø ' + paceStr(r.sec / 60 / r.km) + ' /km' : ''}${r.hr ? ' · ♥ ' + r.hr : ''}${r.elev ? ' · ↗ ' + r.elev + ' m' : ''} · ${r.kcal} kcal</small><small>${r.src === 'strava' ? '🧡' : '📄'} ${esc(r.name || 'Lauf')}</small></span></li>`;
+  const connectedCard = `
+    <article class="card st-card rise">
+      <div class="st-top"><span class="st-ok">${ico('check')}</span><div><b>Mit Strava verbunden${s.athlete ? ' · ' + esc(s.athlete) : ''}</b><small>Zuletzt abgeglichen: ${s.last ? when(s.last) : 'noch nie'}</small></div></div>
+      <button class="btn wide tap" data-act="strava-sync">${ico('shuffle')}Jetzt Läufe holen</button>
+      <label class="switch-row tap"><span>Beim Öffnen der App automatisch holen</span><input type="checkbox" data-st-auto${s.auto !== false ? ' checked' : ''}><i class="sw"></i></label>
+      <button class="link tap st-off" data-act="strava-off">Verbindung trennen</button>
+    </article>
+    <h2 class="sec rise">Eingelesene Läufe</h2>
+    ${runs.length ? `<article class="card rise"><ul class="srun">${runs.map(runLi).join('')}</ul></article>` : '<article class="card rise"><p class="empty sm">Noch keine Läufe eingelesen. Tippe oben auf „Jetzt Läufe holen“.</p></article>'}`;
+  const setupCard = `
+    <article class="card rise">
+      <h3 class="c-h">${ico('run', 'xs')} Einmalig verbinden <small>· ca. 3 Minuten</small></h3>
+      <ol class="steps sm">
+        <li><span class="st-n">1</span><span>Strava-Einstellungen öffnen und dich anmelden.<br><button class="btn sm ghost tap" data-act="strava-open-api">${ico('chev')}strava.com/settings/api</button></span></li>
+        <li><span class="st-n">2</span><span>Dort eine <b>Anwendung anlegen</b>: Name z. B. „You By What You Eat“, Kategorie „Training“, Website <b>https://localhost</b>. Wichtig bei <b>Autorisierungs-Callback-Domain</b>: <button class="chip tap" data-act="strava-copy" data-v="localhost">localhost ${ico('copy', 'xs')}</button></span></li>
+        <li><span class="st-n">3</span><span>Danach zeigt Strava <b>Client-ID</b> (Zahl) und <b>Client-Secret</b> (lange Buchstaben/Zahlen). Hier eintragen:</span></li>
+      </ol>
+      <label class="field"><span>Client-ID</span><input id="st-cid" inputmode="numeric" autocomplete="off" value="${esc(s.cid || '')}" placeholder="z. B. 123456"></label>
+      <label class="field"><span>Client-Secret</span><input id="st-sec" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(s.secret || '')}" placeholder="40 Zeichen"></label>
+      <button class="btn big wide tap" data-act="strava-connect">${ico('run')}Mit Strava verbinden</button>
+      <p class="fine">Strava öffnet sich, dort <b>„Autorisieren“</b> tippen – danach landest du automatisch wieder hier.</p>
+      <details class="st-manual"><summary class="tap">Klappt die Rückkehr nicht? Manuell verbinden</summary>
+        <ol class="steps sm">
+          <li><span class="st-n">1</span><span>Freigabe im Browser öffnen und <b>Autorisieren</b> tippen.<br><button class="btn sm ghost tap" data-act="strava-manual">${ico('chev')}Im Browser öffnen</button></span></li>
+          <li><span class="st-n">2</span><span>Danach zeigt der Browser eine Fehlerseite („Seite nicht erreichbar“) – das ist normal. Kopiere die <b>Adresse oben</b> (sie enthält <b>code=…</b>) und füge sie hier ein:</span></li>
+        </ol>
+        <textarea id="st-paste" class="ta" rows="3" placeholder="http://localhost/exchange_token?state=&code=…"></textarea>
+        <button class="btn ghost wide tap" data-act="strava-redeem">${ico('check')}Code einlösen</button>
+      </details>
+    </article>`;
+  return { html: `
+  <div class="page detail">
+    ${dhead('Strava', 'Läufe nach dem Laufen einlesen')}
+    <section class="info-hero rise" style="--h:20"><span class="ih-emo float">🧡</span><h1>Strava</h1><p>${on ? 'Deine Läufe kommen automatisch in die App.' : 'Lauf aufzeichnen, App öffnen, fertig – Strecke, Zeit, Puls und Kalorien kommen von Strava.'}</p></section>
+    ${on ? connectedCard : setupCard}
+    <article class="card rise">
+      <h3 class="c-h">${ico('copy', 'xs')} Datei einlesen</h3>
+      <p class="lede">Geht auch <b>ohne Strava-Zugang</b>: Eine <b>GPX- oder TCX-Datei</b> eines Laufs auswählen – von Strava (im Browser: Aktivität → ⋯ → GPX exportieren), von deiner Uhr oder einer anderen Lauf-App.</p>
+      <button class="btn ghost wide tap" data-act="strava-file">${ico('image')}Datei auswählen</button>
+      <input id="st-file" type="file" hidden>
+    </article>
+    <button class="list-row tap rise" data-go="#/info/strava"><span class="lr-ico">${ico('info')}</span><span><b>Wie funktioniert das genau?</b><small>Datenschutz, Grenzen, Tipps</small></span>${ico('chev')}</button>
+    <p class="about rise">Läufe von Strava (nur Lesezugriff) · Powered by Strava</p>
+  </div>` };
+}
+
+/* Vorschau, bevor ein Lauf aus einer Datei gespeichert wird */
+export function runImportHTML(r, warn) {
+  const bits = [r.sec && r.km ? 'Ø ' + paceStr(r.sec / 60 / r.km) + ' /km' : '', r.hr ? '♥ ' + r.hr : '', r.elev ? '↗ ' + r.elev + ' m' : ''].filter(Boolean).join(' · ');
+  const t = r.start.slice(11, 16);
+  return `<h2 class="sh-t">Lauf einlesen?</h2><p class="sh-sub">${relDay(r.date)}, ${dLabel(r.date)} · ${t} Uhr${r.name ? ' · ' + esc(r.name) : ''}</p>
+    <div class="stats3 lg"><span>${ico('run')}<b>${lit(r.km)} km</b></span><span>${ico('clock')}<b>${r.min} Min</b></span><span>${ico('fire')}<b>${r.kcal} kcal</b></span></div>
+    <p class="fine">${bits}</p>
+    ${warn ? `<p class="warn-line">⚠️ ${esc(warn)}. Trotzdem als Lauf speichern?</p>` : ''}
+    <div class="sh-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn tap" id="imp-yes">${ico('check')}Speichern</button></div>`;
 }

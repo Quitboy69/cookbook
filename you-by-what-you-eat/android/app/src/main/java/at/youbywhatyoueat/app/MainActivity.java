@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ReceiptOcrPlugin.class);
         registerPlugin(FoodAiPlugin.class);
+        registerPlugin(NetPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

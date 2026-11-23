@@ -1,6 +1,6 @@
 /* You By What You Eat – Start, Aktionen, Timer, Benachrichtigungen */
 import { DISHES, STORES } from './data.js';
-import { S, save, resetAll, exportJSON } from './store.js';
+import { S, save, resetAll, exportJSON, restoreState } from './store.js';
 import * as E from './engine.js';
 import * as SP from './sport.js';
 import * as V from './screens.js';
@@ -11,7 +11,9 @@ import * as FA from './foodai.js';
 import { LABELS } from './foodkb.js';
 import * as N from './nutri.js';
 import { toN8 } from './labelparse.js';
-import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb } from './native.js';
+import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb, openExternal, onDeepLink } from './native.js';
+import * as Strava from './strava.js';
+import { parseTrack } from './trackfile.js';
 
 let notifPerm = 'unknown';
 if (!S.profile.runStart) { S.profile.runStart = E.todayKey(); save(); }
@@ -44,6 +46,7 @@ setRenderer(route => {
     case 'ratings': return V.ratings();
     case 'trinken': return V.trinken();
     case 'weight': return V.weight();
+    case 'strava': return V.strava();
     case 'foto': return V.foto();
     case 'onboarding': return V.onboarding();
     default: return V.heute();
@@ -684,6 +687,28 @@ const A = {
     await testNotification(); toast('Kommt in 5 Sekunden – App ruhig schließen.');
   },
   shopday(el) { S.notif.shop.day = +el.dataset.v; save(); scheduleAll(); haptic.tap(); refresh(); },
+  /* Strava */
+  'strava-open-api'() { openExternal('https://www.strava.com/settings/api').catch(() => toast('Browser konnte nicht geöffnet werden.', 'toast-warn')); },
+  'strava-copy'(el) { navigator.clipboard.writeText(el.dataset.v).then(() => toast('„' + el.dataset.v + '“ kopiert'), () => toast('Bitte „' + el.dataset.v + '“ von Hand eintippen.')); haptic.tap(); },
+  async 'strava-connect'() {
+    if (!stravaKeys()) return;
+    try { await Strava.startAuth(false); toast('Strava öffnet sich – dort „Autorisieren“ tippen.'); } catch (e) { toast(stravaMsg(e), 'toast-warn'); }
+  },
+  async 'strava-manual'() {
+    if (!stravaKeys()) return;
+    try { await Strava.startAuth(true); toast('Nach „Autorisieren“ kommt eine Fehlerseite – Adresse kopieren und hier einfügen.'); } catch (e) { toast(stravaMsg(e), 'toast-warn'); }
+  },
+  async 'strava-redeem'() {
+    if (!stravaKeys()) return;
+    await stravaFinish(Strava.parseAuth(($('#st-paste') || {}).value || ''));
+  },
+  'strava-sync'() { haptic.tap(); stravaSync(true, 30); },
+  'strava-file'() { const f = $('#st-file'); if (f) f.click(); },
+  'strava-off'() {
+    sheet(`<h2 class="sh-t">Verbindung trennen?</h2><p class="sh-sub">Die App vergisst die Strava-Anmeldung. Schon eingelesene Läufe bleiben. Client-ID und Secret bleiben gespeichert, dann geht „Verbinden“ mit einem Tipp.</p><div class="sh-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn tap" id="st-off-yes">Trennen</button></div>`, (el, close) => {
+      $('#st-off-yes', el).addEventListener('click', () => { Strava.disconnect(); close(); haptic.tap(); toast('Strava getrennt.'); });
+    });
+  },
   /* Daten */
   async backup() {
     const txt = exportJSON();
@@ -696,7 +721,7 @@ const A = {
         try {
           const d = JSON.parse($('#rs-ta', el).value);
           if (!d || !d.profile) throw new Error('kein Backup');
-          Object.keys(S).forEach(k => delete S[k]); Object.assign(S, d); save(true); E.invalidatePrices();
+          restoreState(d); E.invalidatePrices();
           close(); toast('Backup eingespielt ✓'); applyTheme(); scheduleAll(); go('#/heute');
         } catch (e) { toast('Das ist kein gültiges Backup.', 'toast-warn'); }
       });
@@ -722,6 +747,54 @@ const A = {
     setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 46); toast('Dein Plan steht! Tippe auf alles – überall gibt’s Erklärungen. ✨'); }, 450);
   }
 };
+
+/* ---------- Strava ---------- */
+const stravaMsg = e => (e && e.code ? e.message : 'Keine Verbindung zu Strava – bist du online?');
+function stravaAnnounce(added) {
+  const l = added[added.length - 1];
+  haptic.ok(); confetti(window.innerWidth / 2, window.innerHeight / 3, 36);
+  toast(added.length === 1 ? `🏃 ${E.lit(l.km)} km von Strava eingelesen · ${l.kcal} kcal 🔥` : `🏃 ${added.length} Läufe von Strava eingelesen`);
+}
+async function stravaSync(manual, days) {
+  if (!Strava.connected() || Strava.syncing()) return;
+  if (manual) toast('Hole Läufe von Strava …');
+  try {
+    const r = await Strava.sync({ days });
+    if (r.n) stravaAnnounce(r.added);
+    else if (manual) toast(r.seen ? 'Keine neuen Läufe – alles ist schon eingelesen.' : 'Bei Strava ist kein neuer Lauf.');
+    if (r.n) scheduleAll();
+    refreshKeep();
+  } catch (e) {
+    if (manual || e.code === 'auth' || e.code === 'scope') toast(stravaMsg(e), 'toast-warn');
+    refreshKeep();
+  }
+}
+const stravaAuto = () => { if (S.profile.onboarded && Strava.connected() && S.strava.auto !== false && Date.now() - (S.strava.last || 0) > 120000) stravaSync(false); };
+async function stravaFinish(p) {
+  if (p.error) { toast(p.error === 'access_denied' ? 'Du hast die Freigabe abgebrochen.' : 'Strava: ' + p.error, 'toast-warn'); return; }
+  if (!p.code) { toast('In der Adresse fehlt „code=…“ – bitte die ganze Adresse einfügen.', 'toast-warn'); return; }
+  try {
+    await Strava.redeem(p.code, p.scope);
+    haptic.ok(); toast('Mit Strava verbunden ✓');
+    if (current() !== '#/strava') go('#/strava'); else refresh();
+    await stravaSync(false, 30);
+  } catch (e) { toast(stravaMsg(e), 'toast-warn'); }          // Seite bleibt wie sie ist (Eingaben + aufgeklappter Bereich)
+}
+function stravaKeys() {
+  const cid = ($('#st-cid') || {}).value, sec = ($('#st-sec') || {}).value;
+  if (cid !== undefined) {
+    if (!Strava.validKeys(cid, sec || '')) { toast('Client-ID (nur Zahlen) und Client-Secret (lange Buchstaben/Zahlen) bitte genau eintragen.', 'toast-warn'); return false; }
+    Strava.setKeys(cid, sec);
+  }
+  if (!Strava.hasKeys()) { toast('Bitte erst Client-ID und Client-Secret eintragen.', 'toast-warn'); return false; }
+  return true;
+}
+onDeepLink(url => {
+  if (!/^ybwye:/i.test(url) || !S.strava.pending) return;
+  const p = Strava.parseAuth(url);
+  S.strava.pending = 0; save(true);                      // jede Rückkehr nur einmal verarbeiten
+  stravaFinish(p);
+});
 
 /* ---------- Klicks & Eingaben ---------- */
 document.addEventListener('click', e => {
@@ -756,6 +829,25 @@ document.addEventListener('change', e => {
   if (el.id === 'food-g' && ui.food) { const v = parseInt(el.value, 10); if (v > 0 && v <= 3000) { ui.food.grams = v; refresh(); } return; }
   if (el.dataset.lf !== undefined && ui.food) { readLabelForm(); return; }
   if (el.dataset.act === 'food-replace' && ui.food) { ui.food.replaces = el.checked; haptic.tap(); refresh(); return; }
+  if (el.dataset.stAuto !== undefined) { S.strava.auto = el.checked; save(); haptic.tap(); return; }
+  if (el.id === 'st-file') {
+    const f = el.files && el.files[0]; if (!f) return;
+    f.text().then(text => {
+      el.value = '';
+      const r = parseTrack(text);
+      if (!r.ok) { toast(r.error, 'toast-warn'); return; }
+      const rec = r.rec; rec.kcal = rec.kcal || Math.round(S.profile.weight * rec.km);
+      sheet(V.runImportHTML(rec, r.warn), (sh, close) => {
+        $('#imp-yes', sh).addEventListener('click', () => {
+          const added = Strava.addRun(rec); close();
+          if (added) { haptic.ok(); confetti(window.innerWidth / 2, window.innerHeight / 2, 36); scheduleAll(); toast('Lauf eingelesen – ' + rec.kcal + ' kcal verbrannt 🔥'); }
+          else toast('Diesen Lauf gibt es schon.', 'toast-warn');
+          refresh();
+        });
+      });
+    }, () => toast('Die Datei konnte nicht gelesen werden.', 'toast-warn'));
+    return;
+  }
   if (el.dataset.nt) { S.notif[el.dataset.nt].on = el.checked; save(); haptic.tap(); scheduleAll(); refresh(); }
   if (el.dataset.n) { const key = el.dataset.n; const rest = (S.notif[key].t || '').split(',').slice(1); S.notif[key].t = [el.value, ...rest].join(','); save(); scheduleAll(); }
   if (el.dataset.f && el.closest('.rv-item')) { readReviewInputs(); if (el.dataset.f === 'ing') el.closest('.rv-item').classList.toggle('matched', !!el.value); }
@@ -782,13 +874,15 @@ async function boot() {
   onResume(() => {
     if (E.todayKey() !== lastDay) { lastDay = E.todayKey(); ui.day = lastDay; E.ensurePlan(); scheduleAll(); }
     if (ui.timer && !ui.timer.done && current().startsWith('#/timer')) { step(); renderTimer(true); return; }
-    if (['#/heute', '#/plan', '#/einkauf', '#/training'].includes(current())) refresh();
+    if (['#/heute', '#/plan', '#/einkauf', '#/training'].includes(current()) || (current() === '#/strava' && Strava.connected())) refresh();   // Einrichtung nicht neu zeichnen (Eingaben bleiben)
+    stravaAuto();
   });
   if (isNative) {
     await setupNotifications(onNotifAction);
     notifPerm = await notifPermission(false);
     if (S.profile.onboarded) scheduleAll();
   } else notifPerm = 'browser';
+  stravaAuto();
   setTimeout(() => document.body.classList.add('ready'), 50);
 }
 boot();

@@ -9,6 +9,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 export const isNative = Capacitor.isNativePlatform();
 const ReceiptOcr = registerPlugin('ReceiptOcr');
 const FoodAi = registerPlugin('FoodAi');
+const Net = registerPlugin('Net');
 
 /* ---------- Haptik ---------- */
 export const haptic = {
@@ -140,4 +141,22 @@ export async function cancelRunCues() {
     const ids = []; for (let i = 0; i < 40; i++) ids.push({ id: 880000 + i });
     await LocalNotifications.cancel({ notifications: ids });
   } catch (e) { /* egal */ }
+}
+
+/* ---------- Strava: Netzwerk + Rückkehr-Link ---------- */
+/* Am Handy läuft der Aufruf nativ (nur www.strava.com), im Browser per fetch (zum Testen) */
+export async function http(url, { method = 'GET', headers = {}, body } = {}) {
+  if (isNative) { const r = await Net.request({ url, method, headers, body }); return { status: r.status, text: r.body || '' }; }
+  const r = await fetch(url, { method, headers, body });
+  return { status: r.status, text: await r.text() };
+}
+export async function openExternal(url) {
+  if (isNative) return Net.open({ url });
+  window.open(url, '_blank', 'noopener');
+}
+/* ybwye://localhost?code=… – kommt nach der Freigabe in Strava zurück in die App */
+export function onDeepLink(fn) {
+  if (!isNative) return;
+  App.addListener('appUrlOpen', e => { if (e && e.url) fn(e.url); });
+  App.getLaunchUrl().then(r => { if (r && r.url) fn(r.url); }).catch(() => {});
 }

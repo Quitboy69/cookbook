@@ -19,6 +19,8 @@ const DEFAULT = () => ({
   weights: [],     // { d, kg }
   act: {},         // date -> { type: 'run'|'workout', done, km, min, kcal, workout }
   food: { cust: [], hist: [], fav: [], pref: {} },   // eigene Produkte, Verlauf, Favoriten, gelernte Korrekturen
+  runs: {},        // id -> { id, src:'strava'|'file', date, start, name, km, sec, min, kcal, hr, hrMax, elev, hidden } (eingelesene Läufe)
+  strava: { cid: '', secret: '', access: '', refresh: '', exp: 0, athlete: '', last: 0, since: 0, auto: true, pending: 0 },
   extra: {},       // date -> [{ id, t, name, e, g, kcal, prot, kh, fat, slot, replaces, thumb }] (Foto-Essen)
   notif: {
     f:    { on: true,  t: '07:00' },
@@ -62,4 +64,18 @@ export function resetAll() {
   Object.assign(state, fresh);
   save(true);
 }
-export function exportJSON() { return JSON.stringify(state, null, 1); }
+/* Backup ohne Strava-Zugangsdaten (Schlüssel und Tokens bleiben nur auf diesem Handy) */
+export function exportJSON() {
+  const c = JSON.parse(JSON.stringify(state));
+  c.strava = { auto: state.strava ? state.strava.auto !== false : true };
+  return JSON.stringify(c, null, 1);
+}
+/* Backup einspielen: fehlende Felder aus älteren Versionen auffüllen, die Strava-Verbindung dieses Handys behalten */
+export function restoreState(data) {
+  const keep = state.strava;
+  const next = merge(DEFAULT(), data);
+  Object.keys(state).forEach(k => delete state[k]);
+  Object.assign(state, next);
+  state.strava = { ...DEFAULT().strava, ...keep };
+  save(true);
+}

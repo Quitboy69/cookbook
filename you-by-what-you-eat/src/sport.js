@@ -175,7 +175,10 @@ export const actOf = k => S.act[k] || null;
 export function markRun(k, km, min, kcal) { S.act[k] = { type: 'run', done: true, km, min, kcal, at: Date.now() }; save(); }
 export function markWorkout(k, id, kcal, min) { S.act[k] = { type: 'workout', done: true, workout: id, kcal, min, at: Date.now() }; save(); }
 export function chooseWorkout(k, id) { S.act[k] = { type: 'workout', done: false, workout: id || workoutFor(k) }; save(); }
-export function undoAct(k) { delete S.act[k]; save(); }
+export function undoAct(k) {
+  Object.values(S.runs || {}).forEach(r => { if (r.date === k) r.hidden = true; });   // eingelesene Läufe dieses Tages nicht gleich wieder holen
+  delete S.act[k]; save();
+}
 export function burned(k) { const a = S.act[k]; return a && a.done ? a.kcal || 0 : 0; }
 export function plannedActivity(k) {
   if (!isRunDay(k)) return null;
