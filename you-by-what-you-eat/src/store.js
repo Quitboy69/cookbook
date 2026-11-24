@@ -21,6 +21,8 @@ const DEFAULT = () => ({
   food: { cust: [], hist: [], fav: [], pref: {} },   // eigene Produkte, Verlauf, Favoriten, gelernte Korrekturen
   runs: {},        // id -> { id, src:'strava'|'file', date, start, name, km, sec, min, kcal, hr, hrMax, elev, hidden } (eingelesene Läufe)
   strava: { cid: '', secret: '', access: '', refresh: '', exp: 0, athlete: '', last: 0, since: 0, auto: true, pending: 0 },
+  fit: { level: 0, place: 'home', eq: ['koerper', 'matte'], plan: null, planStart: null },   // Krafttraining-Einstellungen
+  wlog: [],        // gespeicherte Krafttrainings { id, d, n, e, type, lvl, min, kcal, vol, sets:[{ex,reps,kg,sec}], prs, pts }
   extra: {},       // date -> [{ id, t, name, e, g, kcal, prot, kh, fat, slot, replaces, thumb }] (Foto-Essen)
   notif: {
     f:    { on: true,  t: '07:00' },

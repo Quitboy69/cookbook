@@ -8,6 +8,8 @@ import { isNative } from './native.js';
 import * as FA from './foodai.js';
 import * as N from './nutri.js';
 import * as Strava from './strava.js';
+import * as V2 from './screens2.js';
+import * as W from './workouts.js';
 
 const { fmtInt, dec, eur, lit, DAYS, DS, MONTHS } = E;
 export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shopFrom: null, rz: 'alle', timer: null };
@@ -15,6 +17,7 @@ export const ui = { day: null, amt: 'pp', review: null, drink: null, ob: 0, shop
 /* =========================================================
    Bausteine
    ========================================================= */
+export const essenTabs = a => `<div class="seg wide etabs rise">${[['#/plan', 'plan', 'Wochenplan'], ['#/rezepte', 'rezepte', 'Rezepte'], ['#/einkauf', 'einkauf', 'Einkauf'], ['#/bon', 'bon', 'Bons']].map(([r, k, l]) => `<button class="tap${a === k ? ' on' : ''}" data-go="${r}">${l}</button>`).join('')}</div>`;
 const dhead = (title, sub = '', right = '') => `<header class="dhead"><button class="iconbtn tap" data-act="back" aria-label="Zurück">${ico('back')}</button><div class="dhead-t"><b>${title}</b>${sub ? '<small>' + sub + '</small>' : ''}</div><span class="dhead-s">${right}</span></header>`;
 const stars = (v, cls = '') => { if (v == null) return ''; let h = '<span class="stars-mini ' + cls + '" aria-label="' + dec(v, 1) + ' Sterne">'; for (let i = 1; i <= 5; i++) h += '<i class="' + (v >= i - 0.25 ? 'on' : v >= i - 0.75 ? 'half' : '') + '">★</i>'; return h + '</span>'; };
 const tag = (price, l1) => `<span class="ptag"><span class="ptag-p">${dec(price)}</span><span class="ptag-u">€ ${l1}</span></span>`;
@@ -122,6 +125,11 @@ export function heute() {
   } else if (act && act.done) {
     next += `<div class="nx d"><i class="nx-bar"></i><span class="nx-main"><span class="nx-ico ok">${ico('check')}</span><span><small>Aktivität erledigt</small><b>${act.kind === 'run' ? 'Gelaufen' + (act.km ? ' · ' + lit(act.km) + ' km' : '') : esc(SP.WORKOUTS[act.id].name)}</b><em>${act.min} Min · ${act.kcal} kcal verbrannt 🔥</em></span></span></div>`;
   }
+  if (isToday) {
+    const sw = W.workoutOfDay(k), dw = W.wlog().filter(x => x.d === k).slice(-1)[0];
+    if (dw) next += `<div class="nx d"><i class="nx-bar"></i><span class="nx-main"><span class="nx-ico ok">${ico('check')}</span><span><small>Krafttraining erledigt</small><b>${esc(dw.n)}</b><em>${dw.min} Min · +${dw.pts} Punkte 💪</em></span></span></div>`;
+    else if (sw) next += `<div class="nx k"><i class="nx-bar"></i><button class="nx-main tap" data-go="#/wk/${encodeURIComponent(sw.id)}"><span class="nx-ico kraft">${sw.e}</span><span><small>Krafttraining heute · ${W.LEVEL[sw.lvl].n}</small><b>${esc(sw.n)}</b><em>${ico('clock', 'xs')}${sw.min} Min · ${sw.items.length} Übungen</em></span></button><button class="nx-btn play tap" data-act="wk-start" data-wid="${sw.id}" aria-label="Workout starten">${ico('play')}</button></div>`;
+  }
   if (!next) next = `<div class="nx d"><i class="nx-bar"></i><span class="nx-main"><span class="nx-ico ok">${ico('check')}</span><span><small>${relDay(k)}</small><b>Alles erledigt – stark! 🎉</b></span></span></div>`;
 
   const per = S.profile.persons;
@@ -222,7 +230,8 @@ export function plan() {
   <div class="page">
     <div class="mesh m2" aria-hidden="true"></div>
     <header class="top rise"><div><p class="kicker">${dLabel(days[0])} – ${dLabel(days[6])}</p><h1 class="h1">Plan</h1></div></header>
-    ${planSeg('plan')}
+    ${essenTabs('plan')}
+    
     <div class="tiles4">
       <button class="tile tap rise" data-go="#/info/kcal">${ico('bolt')}<b data-count="${avgK}">0</b><small>Ø kcal / Tag</small></button>
       <button class="tile tap rise" data-go="#/info/eiweiss">${ico('muscle')}<b data-count="${avgP}" data-suf=" g">0</b><small>Ø Eiweiß / Tag</small></button>
@@ -264,7 +273,8 @@ export function rezepte() {
   <div class="page">
     <div class="mesh m2" aria-hidden="true"></div>
     <header class="top rise"><div><p class="kicker">${Object.keys(DISHES).length} Gerichte</p><h1 class="h1">Rezepte</h1></div></header>
-    ${planSeg('rezepte')}
+    ${essenTabs('rezepte')}
+    
     <h2 class="sec rise">Empfohlen</h2>
     <button class="rec-hero tap rise" data-go="#/dish/${recId}?d=${t}&s=a">${photo(recId, 'big')}<span class="ph-over"><small>Heute Abend</small><b>${esc(rec.name)}</b><span class="ph-meta">${ico('bolt', 'xs')}${fmtInt(rec.kcal)} kcal · ${ico('clock', 'xs')}${rec.min} Min · ${ico('muscle', 'xs')}${rec.prot} g</span></span></button>
     <h2 class="sec rise">Kategorien</h2>
@@ -390,6 +400,9 @@ function weekRow(k, t) {
     <span class="wr-s">${x ? '<i class="st ok">' + ico('check') + '</i>' : a ? (a.done ? '<i class="st ok">' + ico('check') + '</i>' : past ? '<i class="st miss">–</i>' : '<i class="st plan">' + ico(a.kind === 'run' ? 'run' : 'dumbbell') + '</i>') : ''}</span></button>`;
 }
 export function training() {
+  if (V2.ui2.ttab === 'workouts') return { html: V2.workoutsTab() };
+  if (V2.ui2.ttab === 'uebungen') return { html: V2.libraryTab() };
+  if (V2.ui2.ttab === 'fortschritt') return { html: V2.progressTab() };
   const t = E.todayKey(), P = S.profile;
   const act = SP.plannedActivity(t);
   const mon = E.addDays(t, -E.wd(t));
@@ -436,13 +449,15 @@ export function training() {
   return { html: `
   <div class="page">
     <div class="mesh m3" aria-hidden="true"></div>
-    <header class="top rise"><div><p class="kicker">Laufen & Workouts</p><h1 class="h1">Training</h1></div><button class="iconbtn tap" data-go="#/profile" aria-label="Einstellungen">${ico('edit')}</button></header>
+    <header class="top rise"><div><p class="kicker">Kraft · Laufen · Workouts</p><h1 class="h1">Training</h1></div><button class="iconbtn tap" data-go="#/plaene" aria-label="Plan & Level">${ico('edit')}</button></header>
     <div class="tstats rise">
       <button class="ts tap" data-go="#/info/laufen"><span>🔥</span><b>${st}</b><small>Serie</small></button>
       <button class="ts tap" data-go="#/info/laufen"><span>🏃</span><b>${ws.done}/${ws.planned}</b><small>Woche</small></button>
       <button class="ts tap" data-go="#/info/laufen"><span>📍</span><b>${lit(ws.km)}</b><small>km</small></button>
       <button class="ts tap" data-go="#/info/verbrannt"><span>⚡</span><b>${fmtInt(ws.kcal)}</b><small>kcal</small></button>
     </div>
+    ${V2.tabs('heute')}
+    ${V2.todayStrength()}
     ${today}
     <h2 class="sec rise">Diese Woche</h2>
     <article class="card wrows rise">${rows.join('')}</article>
@@ -670,6 +685,7 @@ export function einkauf() {
   <div class="page">
     <div class="mesh m4" aria-hidden="true"></div>
     <header class="top rise"><div><p class="kicker">${relDay(from)} + 6 Tage · ${S.profile.persons} Personen</p><h1 class="h1">Einkauf</h1></div><button class="iconbtn tap" data-go="#/bon" aria-label="Bon scannen">${ico('scan')}</button></header>
+    ${essenTabs('einkauf')}
     ${shopSeg('liste')}
     <div class="seg wide rise"><button class="tap${from === t ? ' on' : ''}" data-act="shop-from" data-v="0">ab heute</button><button class="tap${from === E.addDays(t, 1) ? ' on' : ''}" data-act="shop-from" data-v="1">ab morgen</button></div>
     ${L.compare.length ? `<article class="card rise"><h3 class="c-h">${ico('store', 'xs')} Wo am günstigsten?</h3>${L.compare.map((c, i) => `<button class="bar-row tap" data-go="#/store/${c.store}"><span class="br-l">${storeDot(c.store)}${storeName(c.store)}${i === 0 ? ' 🏆' : ''}</span><span class="br-t"><i data-w="${pct(c.sum, maxC)}" style="--c:${(STORES[c.store] || STORES.sonst).color}"></i></span><b>${eur(c.sum)}</b></button>`).join('')}<p class="fine">Mit deinen Bon-Preisen; fehlende Artikel geschätzt.</p></article>`
@@ -696,6 +712,7 @@ export function bon() {
   <div class="page">
     <div class="mesh m4" aria-hidden="true"></div>
     <header class="top rise"><div><p class="kicker">Preise lernen</p><h1 class="h1">Einkauf</h1></div></header>
+    ${essenTabs('bon')}
     ${shopSeg('bon')}
     <article class="card scan-hero rise">
       <div class="paper-anim" aria-hidden="true"><div class="paper"><i></i><i></i><i></i><i class="s"></i><i></i><i class="s"></i><i></i></div><div class="beam"></div></div>

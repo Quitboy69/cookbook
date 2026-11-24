@@ -61,8 +61,8 @@ export const ico = (n, cls = '') => '<svg class="ic ' + cls + '" viewBox="0 0 24
 /* ---------- Router ---------- */
 const stack = [];
 let renderFn = null, lastTap = null, busy = false;
-export const TABS = ['heute', 'plan', 'rezepte', 'training', 'einkauf', 'bon'];
-const TAB_OF = { heute: 'heute', plan: 'plan', rezepte: 'plan', training: 'training', einkauf: 'einkauf', bon: 'einkauf' };
+export const TABS = ['heute', 'plan', 'rezepte', 'training', 'einkauf', 'bon', 'freunde'];
+const TAB_OF = { heute: 'heute', plan: 'essen', rezepte: 'essen', training: 'training', einkauf: 'essen', bon: 'essen', freunde: 'freunde' };
 export function setRenderer(fn) { renderFn = fn; }
 export const current = () => stack[stack.length - 1] || '#/heute';
 export function go(route, opts = {}) {
@@ -138,7 +138,7 @@ function updateNav(route) {
   const base = route.replace('#/', '').split(/[/?]/)[0];
   const tab = TAB_OF[base] || null;
   const nav = $('#nav');
-  nav.classList.toggle('hidden', ['onboarding', 'review', 'timer', 'foto'].includes(base));
+  nav.classList.toggle('hidden', ['onboarding', 'review', 'timer', 'foto', 'play', 'chat'].includes(base));
   $$('.nav-btn', nav).forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   const on = $('.nav-btn.on', nav);
   const pill = $('#nav-pill');

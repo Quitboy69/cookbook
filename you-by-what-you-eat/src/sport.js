@@ -179,7 +179,7 @@ export function undoAct(k) {
   Object.values(S.runs || {}).forEach(r => { if (r.date === k) r.hidden = true; });   // eingelesene Läufe dieses Tages nicht gleich wieder holen
   delete S.act[k]; save();
 }
-export function burned(k) { const a = S.act[k]; return a && a.done ? a.kcal || 0 : 0; }
+export function burned(k) { const a = S.act[k]; return (a && a.done ? a.kcal || 0 : 0) + (S.wlog || []).filter(w => w.d === k).reduce((x, w) => x + (w.kcal || 0), 0); }
 export function plannedActivity(k) {
   if (!isRunDay(k)) return null;
   const a = S.act[k];

@@ -13,3 +13,4 @@ android/capacitor-cordova-android-plugins/build/
 android/app/src/main/assets/food_v1.tflite
 android/app/src/main/assets/inet_v3s.tflite
 scripts/data/work/
+scripts/data/exercises/exercises.json

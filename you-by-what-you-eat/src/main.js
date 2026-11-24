@@ -13,6 +13,8 @@ import * as N from './nutri.js';
 import { toN8 } from './labelparse.js';
 import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb, openExternal, onDeepLink } from './native.js';
 import * as Strava from './strava.js';
+import * as V2 from './screens2.js';
+import * as W from './workouts.js';
 import { parseTrack } from './trackfile.js';
 
 let notifPerm = 'unknown';
@@ -47,6 +49,10 @@ setRenderer(route => {
     case 'trinken': return V.trinken();
     case 'weight': return V.weight();
     case 'strava': return V.strava();
+    case 'ex': return V2.exerciseDetail(arg);
+    case 'wk': return V2.workoutDetail2(arg);
+    case 'play': return V2.player();
+    case 'plaene': return V2.plansScreen();
     case 'foto': return V.foto();
     case 'onboarding': return V.onboarding();
     default: return V.heute();
@@ -442,6 +448,49 @@ function refreshKeep() {
   const n = $('#food-q'); if (n && focus) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { /* egal */ } }
 }
 
+/* ---------- Workout-Player ---------- */
+let plTimer = null;
+function startPlay(wk) {
+  if (!wk || !wk.items.length) { toast('Workout nicht gefunden.', 'toast-warn'); return; }
+  V2.ui2.play = { wk, i: 0, set: 1, phase: 'ready', t0: Date.now(), log: [], kg: {}, reps: null, restEnd: 0, restLen: 0, workEnd: 0 };
+  haptic.med(); go('#/play');
+  clearInterval(plTimer); plTimer = setInterval(playTick, 250);
+}
+function playTick() {
+  const P = V2.ui2.play; if (!P) { clearInterval(plTimer); return; }
+  if (current() !== '#/play') return;
+  const tEl = $('#pl-time'); if (tEl) tEl.textContent = V2.fmtTime((Date.now() - P.t0) / 1000);
+  if (P.phase === 'rest') {
+    const left = Math.max(0, (P.restEnd - Date.now()) / 1000), c = $('#pl-clock'); if (c) c.textContent = Math.ceil(left);
+    const fg = $('#pl-ring .ring-fg'); if (fg) { const len = parseFloat(fg.getAttribute('stroke-dasharray')); fg.style.strokeDashoffset = len * (1 - left / Math.max(1, P.restLen)); }
+    if (left <= 0) { P.phase = 'ready'; haptic.warn(); refresh(); }
+  } else if (P.phase === 'work') {
+    const left = Math.max(0, (P.workEnd - Date.now()) / 1000), c = $('#pl-clock'); if (c) c.textContent = Math.ceil(left);
+    if (left <= 0) { haptic.ok(); playDone(); }
+  }
+}
+function playDone() {
+  const P = V2.ui2.play; if (!P) return;
+  const it = P.wk.items[P.i], e = W.EXI[it.ex];
+  const kgIn = $('#pl-kg'); if (kgIn && kgIn.value.trim()) P.kg[e.id] = parseFloat(kgIn.value.replace(',', '.')) || 0;
+  P.log.push({ ex: e.id, reps: it.timed ? null : (P.reps ?? it.reps), kg: W.weighted(e) ? (P.kg[e.id] || 0) : 0, sec: it.timed ? it.work : 0 });
+  P.reps = null; haptic.ok();
+  if (P.set < it.sets) P.set++;
+  else if (P.i < P.wk.items.length - 1) { P.i++; P.set = 1; }
+  else { finishPlay(); return; }
+  P.phase = 'rest'; P.restLen = it.rest; P.restEnd = Date.now() + it.rest * 1000;
+  refresh();
+}
+function finishPlay() {
+  const P = V2.ui2.play; if (!P) return;
+  clearInterval(plTimer);
+  const rec = W.saveSession(P.wk, P.log, (Date.now() - P.t0) / 1000);
+  V2.ui2.play = null;
+  try { if (window.__social) window.__social.shareWorkout(rec); } catch (e) { /* offline egal */ }
+  go('#/training'); scheduleAll();
+  setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 60); sheet(V2.playSummaryHTML(rec)); }, 450);
+}
+
 const A = {
   foodcam(el) { const d = (el && el.dataset) || {}; startFoodCam(d.k, d.mode || 'food', d.src || 'camera', d.code || ''); },
   foodsearch() { foodReset(); ui.food.state = 'pick'; go('#/foto'); FA.loadProducts().catch(() => null); },
@@ -687,6 +736,34 @@ const A = {
     await testNotification(); toast('Kommt in 5 Sekunden – App ruhig schließen.');
   },
   shopday(el) { S.notif.shop.day = +el.dataset.v; save(); scheduleAll(); haptic.tap(); refresh(); },
+  /* Training 2.0 */
+  ttab(el) { V2.ui2.ttab = el.dataset.v; haptic.tap(); refresh(false); },
+  wcat(el) { V2.ui2.wcat[el.dataset.k] = el.dataset.k === 'lvl' ? +el.dataset.v : el.dataset.v; haptic.tap(); refresh(); },
+  lib(el) {
+    const f = V2.ui2.lib, k = el.dataset.k, v = el.dataset.v;
+    if (k === 'l') f.l = +v; else if (k === 'm') f.m = v;
+    else if (k === 'place') { f.place = f.place === 'home' ? '' : 'home'; f.eq = ''; }
+    else if (k === 'eq') { f.eq = v; f.place = ''; }
+    haptic.tap(); refresh();
+  },
+  'fit-set'(el) { const f = W.fit(); f[el.dataset.k] = el.dataset.k === 'level' ? +el.dataset.v : el.dataset.v; save(); haptic.tap(); refresh(); },
+  'fit-eq'(el) { const f = W.fit(); f.eq = f.eq || []; const v = el.dataset.v; f.eq = f.eq.includes(v) ? f.eq.filter(x => x !== v) : [...f.eq, v]; save(); haptic.tap(); refresh(); },
+  'fit-plan'(el) { const f = W.fit(); f.plan = el.dataset.v; f.planStart = E.todayKey(); save(); haptic.ok(); toast('Plan „' + W.PLANS[f.plan].n + '“ aktiv 💪'); refresh(); },
+  'wk-start'(el) { startPlay(W.parseWid(el.dataset.wid)); },
+  'ex-solo'(el) { const e = W.EXI[el.dataset.id]; startPlay({ id: 'solo', type: 'solo', n: e.n, e: '💪', lvl: W.userLevel(), place: W.fit().place, items: [{ ex: e.id, ...W.scheme(e, W.userLevel()) }], min: 5, kcal: 0 }); },
+  'pl-go'() { const P = V2.ui2.play, it = P.wk.items[P.i]; P.phase = 'work'; P.workEnd = Date.now() + it.work * 1000; haptic.med(); refresh(); },
+  'pl-done'() { playDone(); },
+  'pl-skip'() { const P = V2.ui2.play; P.phase = 'ready'; haptic.tap(); refresh(); },
+  'pl-more'() { const P = V2.ui2.play; P.restEnd += 15000; P.restLen += 15; haptic.tap(); },
+  'pl-kg'(el) { const P = V2.ui2.play, e = W.EXI[P.wk.items[P.i].ex]; const cur = parseFloat(String(($('#pl-kg') || {}).value || '0').replace(',', '.')) || 0; P.kg[e.id] = Math.max(0, Math.round((cur + parseFloat(el.dataset.v)) * 4) / 4); haptic.tap(); refresh(); },
+  'pl-reps'(el) { V2.ui2.play.reps = +el.dataset.v; haptic.tap(); refresh(); },
+  'pl-quit'() {
+    const P = V2.ui2.play; if (!P) { go('#/training'); return; }
+    sheet(`<h2 class="sh-t">Workout beenden?</h2><p class="sh-sub">${P.log.length ? P.log.length + ' Sätze geschafft.' : 'Noch kein Satz geschafft.'}</p><div class="sh-btns col">${P.log.length ? '<button class="btn tap" id="pq-save">Speichern &amp; beenden</button>' : ''}<button class="btn ghost tap" id="pq-drop">Verwerfen</button><button class="btn ghost tap" data-close>Weitermachen</button></div>`, (sh, close) => {
+      const s1 = $('#pq-save', sh); if (s1) s1.addEventListener('click', () => { close(); finishPlay(); });
+      $('#pq-drop', sh).addEventListener('click', () => { close(); V2.ui2.play = null; go('#/training'); });
+    });
+  },
   /* Strava */
   'strava-open-api'() { openExternal('https://www.strava.com/settings/api').catch(() => toast('Browser konnte nicht geöffnet werden.', 'toast-warn')); },
   'strava-copy'(el) { navigator.clipboard.writeText(el.dataset.v).then(() => toast('„' + el.dataset.v + '“ kopiert'), () => toast('Bitte „' + el.dataset.v + '“ von Hand eintippen.')); haptic.tap(); },
@@ -798,6 +875,8 @@ onDeepLink(url => {
 
 /* ---------- Klicks & Eingaben ---------- */
 document.addEventListener('click', e => {
+  const mg = e.target.closest('.mm-pick .mm');
+  if (mg && current() === '#/training') { V2.ui2.lib.m = V2.ui2.lib.m === mg.dataset.m ? '' : mg.dataset.m; haptic.tap(); refresh(); return; }
   const a = e.target.closest('[data-act]');
   const inSheet = a && a.closest('.sheet');
   if (a && !inSheet) { const fn = A[a.dataset.act]; if (fn) { e.preventDefault(); fn(a, e); } return; }
@@ -807,6 +886,11 @@ document.addEventListener('click', e => {
   else if (g) { window.__sheetClose && window.__sheetClose(); go(g.dataset.go); }
 });
 document.addEventListener('input', e => {
+  if (e.target.id === 'pl-kg' && V2.ui2.play) { const P = V2.ui2.play, ex = P.wk.items[P.i].ex; const v = parseFloat(e.target.value.replace(',', '.')); if (!isNaN(v)) P.kg[ex] = v; }
+  if (e.target.id === 'lib-q') {
+    V2.ui2.lib.q = e.target.value; clearTimeout(window.__lq);
+    window.__lq = setTimeout(() => { const pos = e.target.selectionStart; refresh(); const n = $('#lib-q'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { /* egal */ } } }, 220);
+  }
   if (e.target.id === 'food-q' && ui.food) {
     ui.food.q = e.target.value;
     clearTimeout(window.__fq);
@@ -867,6 +951,7 @@ async function boot() {
   onBack(() => {
     if (window.__sheetClose) { window.__sheetClose(); return; }
     if (current().startsWith('#/timer') && ui.timer) { confirmStopTimer(); return; }
+    if (current() === '#/play' && V2.ui2.play) { A['pl-quit'](); return; }
     if (current().includes('onboarding')) { exitApp(); return; }
     if (!back()) exitApp();
   });
