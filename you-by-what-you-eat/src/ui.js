@@ -54,7 +54,14 @@ const P = {
   prev: '<path d="M18 6L9.5 12 18 18z" fill="currentColor"/><path d="M6 6v12"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   bolt: '<path d="M13 3L5.5 13.5h6L10.5 21 18.5 10.5h-6z"/>',
-  grid: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>'
+  grid: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+  send: '<path d="M4.5 12 20 4.5 13.5 20l-2.2-6.3z"/><path d="M11.3 13.7 20 4.5"/>',
+  smile: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.2c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2"/><path d="M9 9.6v.6M15 9.6v.6"/>',
+  share: '<circle cx="17.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/><path d="m8.7 10.8 6.6-4M8.7 13.2l6.6 4"/>',
+  qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18v2M17 17h3v3h-3"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M9.5 17h5"/>',
+  chat: '<path d="M20 11.5a7.5 7.5 0 0 1-11 6.6L4.5 19.5l1.4-4.2A7.5 7.5 0 1 1 20 11.5z"/>'
 };
 export const ico = (n, cls = '') => '<svg class="ic ' + cls + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[n] || '') + '</svg>';
 
@@ -62,7 +69,7 @@ export const ico = (n, cls = '') => '<svg class="ic ' + cls + '" viewBox="0 0 24
 const stack = [];
 let renderFn = null, lastTap = null, busy = false;
 export const TABS = ['heute', 'plan', 'rezepte', 'training', 'einkauf', 'bon', 'freunde'];
-const TAB_OF = { heute: 'heute', plan: 'essen', rezepte: 'essen', training: 'training', einkauf: 'essen', bon: 'essen', freunde: 'freunde' };
+const TAB_OF = { heute: 'heute', plan: 'essen', rezepte: 'essen', training: 'training', einkauf: 'essen', bon: 'essen', freunde: 'freunde', gruppe: 'freunde', sprofil: 'freunde', duell: 'freunde', sticker: 'freunde' };
 export function setRenderer(fn) { renderFn = fn; }
 export const current = () => stack[stack.length - 1] || '#/heute';
 export function go(route, opts = {}) {

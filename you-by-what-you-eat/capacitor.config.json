@@ -3,7 +3,8 @@
   "appName": "You By What You Eat",
   "webDir": "www",
   "android": {
-    "backgroundColor": "#0B1410"
+    "backgroundColor": "#0B1410",
+    "allowMixedContent": true
   },
   "plugins": {
     "LocalNotifications": {

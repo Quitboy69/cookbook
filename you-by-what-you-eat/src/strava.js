@@ -118,6 +118,8 @@ export function addRun(r) {
   S.runs[r.id] = r;
   applyDay(r.date);
   save();
+  // Neue Läufe der letzten 2 Tage automatisch mit Freunden teilen (ältere Importe nicht)
+  try { if (window.__social && isFinite(t) && Date.now() - t < 2 * 864e5) window.__social.shareRun(r.km, r.min, Math.round(10 + r.km * 10), { hr: r.hr || undefined, kcal: r.kcal || undefined }); } catch (e) { /* offline egal */ }
   return r;
 }
 export function hideRunsOf(date) { Object.values(S.runs || {}).forEach(r => { if (r.date === date) r.hidden = true; }); }

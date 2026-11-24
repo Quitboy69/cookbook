@@ -172,7 +172,7 @@ export function workoutFor(k) {
 
 /* ---------- Aktivitäts-Status ---------- */
 export const actOf = k => S.act[k] || null;
-export function markRun(k, km, min, kcal) { S.act[k] = { type: 'run', done: true, km, min, kcal, at: Date.now() }; save(); }
+export function markRun(k, km, min, kcal) { S.act[k] = { type: 'run', done: true, km, min, kcal, at: Date.now() }; save(); try { if (window.__social && km > 0) window.__social.shareRun(km, min, Math.round(10 + km * 10), { kcal }); } catch (e) { /* offline egal */ } }
 export function markWorkout(k, id, kcal, min) { S.act[k] = { type: 'workout', done: true, workout: id, kcal, min, at: Date.now() }; save(); }
 export function chooseWorkout(k, id) { S.act[k] = { type: 'workout', done: false, workout: id || workoutFor(k) }; save(); }
 export function undoAct(k) {

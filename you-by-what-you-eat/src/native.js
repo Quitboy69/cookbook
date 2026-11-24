@@ -5,6 +5,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { App } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { Share } from '@capacitor/share';
 
 export const isNative = Capacitor.isNativePlatform();
 const ReceiptOcr = registerPlugin('ReceiptOcr');
@@ -82,6 +83,7 @@ export async function setupNotifications(onAction) {
   try {
     await LocalNotifications.createChannel({ id: 'meals', name: 'Essen & Bewertungen', description: 'Erinnerungen ans Kochen, Essen und Bewerten', importance: 4, vibration: true, visibility: 1 });
     await LocalNotifications.createChannel({ id: 'tips', name: 'Trinken & Einkauf', description: 'Wasser- und Einkaufs-Erinnerungen', importance: 3, vibration: true, visibility: 1 });
+    await LocalNotifications.createChannel({ id: 'chat', name: 'Freunde & Chats', description: 'Neue Nachrichten aus deinen Gruppen und von Freunden', importance: 4, vibration: true, visibility: 0 });
     await LocalNotifications.createChannel({ id: 'run', name: 'Laufen & Workout', description: 'Lauf-Erinnerungen und Ansagen während des Laufs', importance: 5, vibration: true, visibility: 1 });
     await LocalNotifications.registerActionTypes({ types: [
       { id: 'RATE', actions: [{ id: 'eaten', title: 'Gegessen ✓' }, { id: 'rate', title: 'Jetzt bewerten ★' }] },
@@ -97,7 +99,7 @@ export async function reschedule(list) {
   if (!isNative) return { ok: false, n: 0 };
   try {
     const pending = await LocalNotifications.getPending();
-    const old = pending.notifications.filter(n => n.id < 800000 || n.id >= 900000);   // Lauf-Ansagen (880000+) bleiben
+    const old = pending.notifications.filter(n => n.id < 700000 || n.id >= 900000);   // Chat (700000+) und Lauf-Ansagen (880000+) bleiben
     if (old.length) await LocalNotifications.cancel({ notifications: old.map(n => ({ id: n.id })) });
     const now = Date.now();
     const notifications = list.filter(n => n.at.getTime() > now + 30000).slice(0, 60).map(n => ({
@@ -159,4 +161,23 @@ export function onDeepLink(fn) {
   if (!isNative) return;
   App.addListener('appUrlOpen', e => { if (e && e.url) fn(e.url); });
   App.getLaunchUrl().then(r => { if (r && r.url) fn(r.url); }).catch(() => {});
+}
+
+/* ---------- Community: Teilen + Chat-Benachrichtigung ---------- */
+export async function shareText(text, title = 'Teilen') {
+  if (isNative) { try { await Share.share({ title, text, dialogTitle: title }); return true; } catch (e) { if (/cancel/i.test(String(e && e.message))) return false; } }
+  if (navigator.share) { try { await navigator.share({ title, text }); return true; } catch (e) { return false; } }
+  try { await navigator.clipboard.writeText(text); } catch (e) { /* egal */ }
+  const { toast } = await import('./ui.js'); toast('In die Zwischenablage kopiert – jetzt einfügen und senden.');
+  return true;
+}
+let chatNid = 0;
+export async function chatNotify({ title, body, chat }) {
+  if (!isNative) return;
+  try {
+    await LocalNotifications.schedule({ notifications: [{
+      id: 700000 + (chatNid++ % 5000), title, body, largeBody: body, schedule: { at: new Date(Date.now() + 300), allowWhileIdle: true },
+      isExactNotification: false, channelId: 'chat', group: 'chat', extra: { route: 'chat/' + encodeURIComponent(chat) }, smallIcon: 'ic_stat_icon', iconColor: '#12B886', autoCancel: true
+    }] });
+  } catch (e) { /* egal */ }
 }

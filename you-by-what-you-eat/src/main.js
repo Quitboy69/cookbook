@@ -11,10 +11,12 @@ import * as FA from './foodai.js';
 import { LABELS } from './foodkb.js';
 import * as N from './nutri.js';
 import { toN8 } from './labelparse.js';
-import { isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb, openExternal, onDeepLink } from './native.js';
+import { chatNotify, isNative, haptic, onBack, exitApp, onResume, takeReceiptPhoto, ocr, notifPermission, setupNotifications, reschedule, testNotification, statusBar, scheduleRunCues, cancelRunCues, analyzeFood, makeThumb, openExternal, onDeepLink } from './native.js';
 import * as Strava from './strava.js';
 import * as V2 from './screens2.js';
 import * as W from './workouts.js';
+import * as V3 from './screens3.js';
+import * as SO from './social.js';
 import { parseTrack } from './trackfile.js';
 
 let notifPerm = 'unknown';
@@ -53,6 +55,12 @@ setRenderer(route => {
     case 'wk': return V2.workoutDetail2(arg);
     case 'play': return V2.player();
     case 'plaene': return V2.plansScreen();
+    case 'freunde': return V3.freunde();
+    case 'chat': return V3.chat(path.slice(5));
+    case 'gruppe': return V3.gruppe(arg);
+    case 'sprofil': return V3.sprofil(arg || 'me');
+    case 'duell': return V3.duell(arg);
+    case 'sticker': return V3.stickerEditor();
     case 'foto': return V.foto();
     case 'onboarding': return V.onboarding();
     default: return V.heute();
@@ -816,7 +824,7 @@ const A = {
   },
   async 'ob-notif'() { notifPerm = await notifPermission(true); A['ob-done'](); },
   'ob-done'() {
-    S.profile.onboarded = true; S.seen.v11 = true; save(true);
+    S.profile.onboarded = true; S.seen.v11 = true; S.seen.v20 = true; save(true);
     E.ensurePlan(); scheduleAll(); haptic.ok();
     go('#/heute');
     setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight / 3, 46); toast('Dein Plan steht! Tippe auf alles – überall gibt’s Erklärungen. ✨'); }, 450);
@@ -865,10 +873,24 @@ function stravaKeys() {
   return true;
 }
 onDeepLink(url => {
+  if (/^ybwye:\/\/join/i.test(url)) { V3.handleInvite(url); return; }
   if (!/^ybwye:/i.test(url) || !S.strava.pending) return;
   const p = Strava.parseAuth(url);
   S.strava.pending = 0; save(true);                      // jede Rückkehr nur einmal verarbeiten
   stravaFinish(p);
+});
+
+Object.assign(A, V3.actions());
+
+/* ---------- Community: Live-Verbindung, Ungelesen-Zähler, Benachrichtigungen ---------- */
+window.__social = SO;
+function navBadge(n) { const b = $('#nav-badge'); if (!b) return; b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n || ''); }
+SO.on(ev => { if (ev === 'unread') navBadge(SO.live.unread); });
+SO.setNotifier(chatNotify);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !SO.online()) return;
+  if (SO.live.status !== 'on') SO.connect();
+  const r = current(); if (r.startsWith('#/chat/')) { const id = decodeURIComponent(r.slice(7)); SO.loadChat(id).then(real => SO.markRead(real)).catch(() => {}); }
 });
 
 /* ---------- Klicks & Eingaben ---------- */
@@ -911,6 +933,7 @@ document.addEventListener('change', e => {
   if (el.id === 'food-g' && ui.food) { const v = parseInt(el.value, 10); if (v > 0 && v <= 3000) { ui.food.grams = v; refresh(); } return; }
   if (el.dataset.lf !== undefined && ui.food) { readLabelForm(); return; }
   if (el.dataset.act === 'food-replace' && ui.food) { ui.food.replaces = el.checked; haptic.tap(); refresh(); return; }
+  if (el.dataset.soAuto !== undefined) { V3.onAutoToggle(el.checked); return; }
   if (el.dataset.stAuto !== undefined) { S.strava.auto = el.checked; save(); haptic.tap(); return; }
   if (el.id === 'st-file') {
     const f = el.files && el.files[0]; if (!f) return;
@@ -946,10 +969,17 @@ async function boot() {
     S.seen.v11 = true; save();
     watchSheetClose();
   }, 900);
+  else if (!S.seen.v20) setTimeout(() => {
+    sheet(`<div class="learn-sum"><span class="ls-emo">💪🏆💬</span><h2 class="sh-t">Neu in 2.0</h2><p class="sh-sub">Die größte Version bisher:</p></div>
+      <ul class="so-feat"><li><b>🤸</b>137 Übungen nur mit dem eigenen Körper – mit Fotos, Anleitung und Level von Einsteiger bis Profi</li><li><b>🫀</b>Muskel-Grafik: du siehst bei jeder Übung, was gerade arbeitet</li><li><b>🗓️</b>Trainingspläne für Frauen und Männer + Workout-Player mit Pausen-Timer</li><li><b>👥</b>Freunde, Gruppenchat mit Fotos & Stickern und eine Wochen-Rangliste</li></ul>
+      <div class="rc-btns" style="margin-top:16px"><button class="btn tap" data-go="#/training">Training ansehen</button><button class="btn ghost tap" data-go="#/freunde">Freunde</button></div>`);
+    S.seen.v20 = true; save();
+  }, 900);
   onBack(() => {
     if (window.__sheetClose) { window.__sheetClose(); return; }
     if (current().startsWith('#/timer') && ui.timer) { confirmStopTimer(); return; }
     if (current() === '#/play' && V2.ui2.play) { A['pl-quit'](); return; }
+    if (document.querySelector('.viewer')) { document.querySelector('.viewer').click(); return; }
     if (current().includes('onboarding')) { exitApp(); return; }
     if (!back()) exitApp();
   });
@@ -966,6 +996,7 @@ async function boot() {
     if (S.profile.onboarded) scheduleAll();
   } else notifPerm = 'browser';
   stravaAuto();
+  if (SO.online()) { SO.connect(); SO.refreshLists().catch(() => {}); }
   setTimeout(() => document.body.classList.add('ready'), 50);
 }
 boot();

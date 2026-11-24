@@ -14,6 +14,12 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.4.1:** Zahlen-Animation (Kalorien, Ring) zeigt in den ersten Millisekunden keine falschen Werte mehr.
 
+**Version 2.0:** Training ohne Geräte und Freunde.
+- **137 Übungen nur mit dem eigenen Körper** (Boden/Matte, Stuhl/Bank, optional Klimmzugstange), jede mit Fotos, Schritt-für-Schritt-Anleitung, Tipp und Level (Einsteiger, Amateur, Fortgeschritten, Profi)
+- **Muskel-Grafik** (vorne/hinten): Hauptmuskeln und Mitarbeiter bei jeder Übung, Muskel antippen filtert die Bibliothek, Wochen-Heatmap
+- **15 Trainingsarten × 4 Level**, Pläne für Frauen und Männer, Workout-Player mit Sätzen, Wiederholungen, Pausen-Ring und Rekorden
+- **Freunde & Gruppen** über einen eigenen Server (z. B. Raspberry Pi): Gruppenchat mit Fotos, fertigen und selbstgemachten Stickern, Reaktionen, Wochen-Rangliste mit Podium, Feed, Folgen per Freundescode, 1-gegen-1-Vergleich, Einladung per Link/QR-Code. Workouts und Läufe werden automatisch geteilt (abschaltbar).
+
 ## Was die App kann
 
 | Bereich | Funktion |
@@ -68,6 +74,9 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 - `src/strava.js` – Strava-Anmeldung (OAuth), Token erneuern, Läufe holen und dem Tag zuordnen; `src/trackfile.js` liest GPX/TCX
 - `src/receipt.js` – Bon-Zeilen aus der Texterkennung zusammensetzen und auswerten
 - `src/screens.js`, `src/ui.js`, `www/styles.css` – Oberfläche und Animationen
+- `src/exercises.js` (erzeugt von `scripts/data/exercises/gen_exercises.py`), `src/workouts.js`, `src/muscles.js`, `src/screens2.js` – Übungen, Workout-Generator, Pläne, Muskel-Grafik, Training-Oberfläche. Fotos: `www/ex/` aus der free-exercise-db (gemeinfrei)
+- `src/social.js`, `src/screens3.js`, `src/stickers.js` – Community: Server-Verbindung (REST + Live-Events), Chats, Rangliste, Profil, Duell, Sticker-Packs und Sticker-Editor
+- `server/` – Community-Server (Node.js ohne Abhängigkeiten) mit Installationsskript und Anleitung für den Raspberry Pi (`server/ANLEITUNG.md`)
 - `src/native.js` – Kamera, Benachrichtigungen, Vibration, Zurück-Taste
 - `android/app/src/main/java/.../ReceiptOcrPlugin.java` – Texterkennung (ML Kit)
 - `android/app/src/main/java/.../FoodAiPlugin.java` – Essens-Erkennung: Barcode, Text, AIY Food V1 und MobileNetV3 (ML Kit, Apache 2.0)
@@ -79,6 +88,7 @@ Zum Signieren müssen `YBWYE_KEYSTORE`, `YBWYE_KEYSTORE_PASSWORD` und `YBWYE_KEY
 
 - **Open Food Facts** (Produkte, Nährwerte, Nutri-Score), ODbL-Lizenz, Quelle ist auch in der App genannt. Von Nutzern erfasst, daher können Werte abweichen.
 - **USDA FoodData Central, SR Legacy** (Grundnahrungsmittel), gemeinfrei.
+- **free-exercise-db** (yuhonas, Unlicense/gemeinfrei) – Übungsfotos; Texte auf Deutsch selbst geschrieben.
 - Eigene Richtwerte für Gerichte und regionale Sachen sind in der App mit „Richtwert“ gekennzeichnet.
 
 Neu erzeugen (Download-Ordner `scripts/data/work/` oder `YBWYE_DATA`): `process_off.py` filtert den Open-Food-Facts-CSV-Dump (`off.csv.gz`), `build_products.py` schreibt `www/data/products.json`, `gen_generic.py --write` erzeugt `src/generic.js` aus dem USDA-Datensatz (`usda/…`), `gen_foodkb.py` die Klassenliste des Gericht-Modells.
@@ -89,6 +99,12 @@ Neu erzeugen (Download-Ordner `scripts/data/work/` oder `YBWYE_DATA`): `process_
 - Strava begrenzt Abfragen (100 pro 15 Minuten). Das reicht für eine Person locker.
 - Die Rückkehr nach der Freigabe nutzt den Link `ybwye://localhost` (Intent-Filter in der Manifest-Datei). Wenn Strava diese Adresse ablehnt, hilft die manuelle Variante.
 - Läufe sind Strava-Daten des eigenen Kontos (nur Lesezugriff). „Powered by Strava“.
+
+## Community: Hinweise
+
+- Der Server gehört euch: keine fremde Cloud. Ein Raspberry Pi 3B+ reicht für etwa 100 Leute. Einrichtung Schritt für Schritt: `server/ANLEITUNG.md`.
+- Nachrichten kommen live, solange die App offen ist oder kurz im Hintergrund läuft. Ist die App ganz geschlossen, gibt es (ohne Google-Push-Dienst) keine Benachrichtigung – beim nächsten Öffnen ist alles da.
+- Empfohlen ist eine https-Adresse (Tailscale Funnel). Im Heimnetz geht auch `http://<pi>:8787`.
 
 ## Grenzen
 
