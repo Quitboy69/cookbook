@@ -5,7 +5,7 @@ import * as W from './workouts.js';
 import { muscleSVG, heatSVG, MUSCLE_NAMES, MUSCLE_GROUPS } from './muscles.js';
 import { ico, esc, ring } from './ui.js';
 
-export const ui2 = { ttab: 'heute', lib: { q: '', m: '', l: 0, eq: '', place: '' }, wcat: { lvl: 0, place: '' }, play: null };
+export const ui2 = { ttab: 'heute', lib: { q: '', m: '', l: 0, eq: '', type: '' }, wcat: { lvl: 0, place: '' }, play: null };
 const dhead = (title, sub = '', right = '') => `<header class="dhead"><button class="iconbtn tap" data-act="back" aria-label="Zurück">${ico('back')}</button><div class="dhead-t"><b>${title}</b>${sub ? '<small>' + sub + '</small>' : ''}</div><span class="dhead-s">${right}</span></header>`;
 const lit = n => String(Math.round(n * 10) / 10).replace('.', ',');
 const fmt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -46,7 +46,7 @@ export function workoutsTab() {
   return `<div class="page">${head()}${tabs('workouts')}
     <button class="card plan-card tap rise" data-go="#/plaene"><span class="pc-e">${p.e}</span><span><small>Dein Plan · ${(S.profile.train || []).length}× pro Woche</small><b>${esc(p.n)}</b><em>${esc(p.d)}</em></span>${ico('chev')}</button>
     <div class="filt rise"><div class="seg">${[1, 2, 3, 4].map(l => `<button class="tap${lvl === l ? ' on' : ''}" data-act="wcat" data-k="lvl" data-v="${l}">${W.LEVEL[l].n}</button>`).join('')}</div></div>
-    <div class="seg wide rise">${[['home', '🏠 Zuhause'], ['gym', '🏋️ Fitnessstudio']].map(([v, l]) => `<button class="tap${place === v ? ' on' : ''}" data-act="wcat" data-k="place" data-v="${v}">${l}</button>`).join('')}</div>
+    <div class="eq-line rise"><span>💪 Nur Eigengewicht · 🪑 Stuhl/Bank reicht</span><button class="chip tap${W.hasBar() ? ' on' : ''}" data-act="fit-eq" data-v="stange">${W.hasBar() ? '✓ ' : '+ '}Klimmzugstange</button></div>
     <p class="fine rise">${list.length} Workouts für <b>${W.LEVEL[lvl].n}</b> · jede Woche neue Übungs-Kombinationen</p>
     <div class="wk-grid rise">${list.map(wkCard).join('')}</div>
     <h2 class="sec rise">Lauf-Ersatz: Mini-Workouts</h2>
@@ -59,15 +59,16 @@ function exRow(e) {
   return `<button class="ex-row tap" data-go="#/ex/${e.id}"><img src="${exImg(e)}" alt="" loading="lazy"><span class="exr-t"><b>${esc(e.n)}</b><small>${e.p.map(m => MUSCLE_NAMES[m]).join(' · ')}</small><small class="exr-m">${lvlDots(e.l)} ${W.EQUIP[e.eq]}</small></span>${ico('chev')}</button>`;
 }
 export function libraryTab() {
-  const f = ui2.lib, list = W.filterEx({ q: f.q, muscle: f.m, level: f.l, eq: f.eq, place: f.place });
+  const f = ui2.lib, list = W.filterEx({ q: f.q, muscle: f.m, level: f.l, eq: f.eq, type: f.type });
   const groups = [['', 'Alle'], ...Object.keys(MUSCLE_NAMES).filter(m => m !== 'neck').map(m => [m, MUSCLE_NAMES[m]])];
   return `<div class="page">${head()}${tabs('uebungen')}
     <article class="card mm-pick rise"><div class="row-b"><h3 class="c-h">Tippe auf einen Muskel</h3>${f.m ? `<button class="link tap" data-act="lib" data-k="m" data-v="">Alle ${ico('close', 'xs')}</button>` : ''}</div>${muscleSVG(f.m ? [f.m] : [], [], { labels: true })}</article>
     <label class="search rise">${ico('edit')}<input id="lib-q" placeholder="Übung suchen, z. B. Kniebeuge" value="${esc(f.q)}" autocomplete="off"></label>
     <div class="hscroll rise">${groups.map(([m, l]) => `<button class="chip tap${f.m === m ? ' on' : ''}" data-act="lib" data-k="m" data-v="${m}">${l}</button>`).join('')}</div>
     <div class="hscroll rise">${[[0, 'Jedes Level'], [1, 'Einsteiger'], [2, 'Amateur'], [3, 'Fortgeschritten'], [4, 'Profi']].map(([l, n]) => `<button class="chip tap${f.l === l ? ' on' : ''}" data-act="lib" data-k="l" data-v="${l}">${n}</button>`).join('')}</div>
-    <div class="hscroll rise">${[['', 'Alle Geräte'], ['home', '🏠 Zuhause machbar'], ...Object.entries(W.EQUIP)].map(([v, n]) => `<button class="chip tap${(v === 'home' ? f.place === 'home' : f.eq === v && f.place !== 'home') && (v || !f.eq) ? ' on' : ''}" data-act="lib" data-k="${v === 'home' ? 'place' : 'eq'}" data-v="${v}">${n}</button>`).join('')}</div>
-    <p class="fine rise"><b>${list.length}</b> von ${W.filterEx().length} Übungen</p>
+    <div class="hscroll rise">${[['', 'Alle Arten'], ...Object.entries(W.TYPE)].map(([v, n]) => `<button class="chip tap${(f.type || '') === v ? ' on' : ''}" data-act="lib" data-k="type" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="hscroll rise">${[['', 'Alle Hilfsmittel'], ...Object.entries(W.EQUIP)].map(([v, n]) => `<button class="chip tap${(f.eq || '') === v ? ' on' : ''}" data-act="lib" data-k="eq" data-v="${v}">${n}</button>`).join('')}</div>
+    <p class="fine rise"><b>${list.length}</b> von ${W.filterEx().length} Übungen · alle mit dem eigenen Körpergewicht</p>
     <div class="ex-list2 rise">${list.slice(0, 80).map(exRow).join('') || '<p class="empty">Keine Übung passt zu diesen Filtern.</p>'}</div>
     ${list.length > 80 ? `<p class="fine">… und ${list.length - 80} weitere – filtere genauer.</p>` : ''}
     <p class="about">Übungsfotos: free-exercise-db (Public Domain)</p>
@@ -95,7 +96,7 @@ export function workoutDetail2(widRaw) {
   const w = W.parseWid(decodeURIComponent(widRaw)); if (!w) return { html: `<div class="page detail">${dhead('Workout')}<p class="empty">Nicht gefunden.</p></div>` };
   const prim = {}; w.items.forEach(it => { const e = W.EXI[it.ex]; e.p.forEach(m => prim[m] = 1); });
   const sec = []; w.items.forEach(it => W.EXI[it.ex].s2.forEach(m => { if (!prim[m]) sec.push(m); }));
-  return { html: `<div class="page detail">${dhead(esc(w.n), W.LEVEL[w.lvl].n + ' · ' + (w.place === 'gym' ? 'Fitnessstudio' : 'Zuhause'))}
+  return { html: `<div class="page detail">${dhead(esc(w.n), W.LEVEL[w.lvl].n + ' · nur Eigengewicht')}
     <section class="wk-hero rise" style="--h:${TCOL[w.type] ?? 168}"><span class="wk-he float">${w.e}</span><h1>${esc(w.n)}</h1><p>${esc(w.d)}</p></section>
     <div class="stats3 lg rise"><span>${ico('clock')}<b>${w.min} Min</b></span><span>${ico('dumbbell')}<b>${w.items.length} Übungen</b></span><span>${ico('fire')}<b>≈ ${w.kcal} kcal</b></span></div>
     <article class="card rise"><h3 class="c-h">Trainierte Muskeln</h3>${muscleSVG(Object.keys(prim), sec)}</article>
@@ -162,8 +163,9 @@ export function plansScreen() {
   const f = W.fit(), lvl = W.userLevel(), act = W.activePlan();
   return { html: `<div class="page detail">${dhead('Plan & Level', 'Wie willst du trainieren?')}
     <article class="card rise"><h3 class="c-h">Dein Level</h3><div class="goal-list">${[1, 2, 3, 4].map(l => `<button class="goal tap${lvl === l ? ' on' : ''}" data-act="fit-set" data-k="level" data-v="${l}"><b>${W.LEVEL[l].n}</b><small>${['Neu im Training oder lange Pause.', 'Trainierst seit ein paar Monaten.', 'Regelmäßig seit über einem Jahr, saubere Technik.', 'Jahre Erfahrung, schwere Grundübungen.'][l - 1]}</small></button>`).join('')}</div></article>
-    <article class="card rise"><h3 class="c-h">Wo trainierst du?</h3><div class="seg wide">${[['home', '🏠 Zuhause'], ['gym', '🏋️ Fitnessstudio']].map(([v, n]) => `<button class="tap${f.place === v ? ' on' : ''}" data-act="fit-set" data-k="place" data-v="${v}">${n}</button>`).join('')}</div>
-      <span class="flabel">Zuhause vorhanden</span><div class="chips">${W.HOME_EQ.map(q => `<button class="chip tap${(f.eq || []).includes(q) ? ' on' : ''}" data-act="fit-eq" data-v="${q}">${W.EQUIP[q]}</button>`).join('')}</div></article>
+    <article class="card rise"><h3 class="c-h">Was hast du zu Hause?</h3><p class="lede">Alle Übungen gehen mit dem eigenen Körpergewicht. Ein Stuhl, eine Bank oder Stufe reicht für fast alles.</p>
+      <div class="chips"><span class="chip on">✓ Boden / Matte</span><span class="chip on">✓ Stuhl, Bank, Stufe</span><button class="chip tap${W.hasBar() ? ' on' : ''}" data-act="fit-eq" data-v="stange">${W.hasBar() ? '✓ ' : '+ '}Klimmzugstange / Barren</button></div>
+      <p class="fine">Mit Klimmzugstange kommen Klimmzüge, Dips und Hänge-Übungen dazu.</p></article>
     <h2 class="sec rise">Trainingsplan</h2>
     <div class="list">${Object.entries(W.PLANS).map(([k, p]) => `<button class="plan-row tap rise${act === k ? ' on' : ''}" data-act="fit-plan" data-v="${k}"><span class="pc-e">${p.e}</span><span><b>${esc(p.n)}</b><small>${esc(p.for)} · ${esc(p.d)}</small><small class="pl-seq">${p.seq.map(t => W.WTYPES[t].e + ' ' + W.WTYPES[t].n).join(' → ')}</small></span>${act === k ? `<i class="st ok">${ico('check')}</i>` : ''}</button>`).join('')}</div>
     <p class="fine rise">Krafttrainingstage stellst du unter Ich → Profil ein (aktuell ${(S.profile.train || []).length}× pro Woche). Die Workouts kommen der Reihe nach an diesen Tagen.</p>

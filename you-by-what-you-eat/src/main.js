@@ -741,13 +741,11 @@ const A = {
   wcat(el) { V2.ui2.wcat[el.dataset.k] = el.dataset.k === 'lvl' ? +el.dataset.v : el.dataset.v; haptic.tap(); refresh(); },
   lib(el) {
     const f = V2.ui2.lib, k = el.dataset.k, v = el.dataset.v;
-    if (k === 'l') f.l = +v; else if (k === 'm') f.m = v;
-    else if (k === 'place') { f.place = f.place === 'home' ? '' : 'home'; f.eq = ''; }
-    else if (k === 'eq') { f.eq = v; f.place = ''; }
+    if (k === 'l') f.l = +v; else if (k === 'm') f.m = v; else if (k === 'eq') f.eq = v; else if (k === 'type') f.type = v;
     haptic.tap(); refresh();
   },
   'fit-set'(el) { const f = W.fit(); f[el.dataset.k] = el.dataset.k === 'level' ? +el.dataset.v : el.dataset.v; save(); haptic.tap(); refresh(); },
-  'fit-eq'(el) { const f = W.fit(); f.eq = f.eq || []; const v = el.dataset.v; f.eq = f.eq.includes(v) ? f.eq.filter(x => x !== v) : [...f.eq, v]; save(); haptic.tap(); refresh(); },
+  'fit-eq'(el) { const f = W.fit(); const v = el.dataset.v; if (W.BASE_EQ.includes(v)) return; f.eq = f.eq.includes(v) ? f.eq.filter(x => x !== v) : [...f.eq, v]; save(); haptic.tap(); toast(f.eq.includes(v) ? 'Klimmzugstange dabei – Klimmzüge & Dips kommen in deine Workouts 💪' : 'Ohne Stange – Workouts angepasst'); refresh(); },
   'fit-plan'(el) { const f = W.fit(); f.plan = el.dataset.v; f.planStart = E.todayKey(); save(); haptic.ok(); toast('Plan „' + W.PLANS[f.plan].n + '“ aktiv 💪'); refresh(); },
   'wk-start'(el) { startPlay(W.parseWid(el.dataset.wid)); },
   'ex-solo'(el) { const e = W.EXI[el.dataset.id]; startPlay({ id: 'solo', type: 'solo', n: e.n, e: '💪', lvl: W.userLevel(), place: W.fit().place, items: [{ ex: e.id, ...W.scheme(e, W.userLevel()) }], min: 5, kcal: 0 }); },

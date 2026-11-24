@@ -1122,3 +1122,5 @@ input:checked + .sw::after{transform:translateX(20px)}
 .pl-ring svg{position:absolute;inset:0}
 .pl-ring .ring-bg{stroke:var(--surface-2)}
 .pl-ring .ring-fg{stroke:var(--accent);transition:stroke-dashoffset .25s linear;filter:drop-shadow(0 0 10px color-mix(in srgb,var(--accent) 60%,transparent))}
+.eq-line{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;font-size:12.5px;color:var(--muted);font-weight:600}
+.eq-line .chip{flex:none}

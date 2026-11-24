@@ -1,8 +1,9 @@
-"""Übungsbibliothek erzeugen: ex1-3.py (deutsche Texte, Level, Geräte) + free-exercise-db (Muskeln, Fotos) → src/exercises.js + www/ex/*.webp
-   Aufruf: python3 scripts/data/exercises/gen_exercises.py --img"""
+"""Übungsbibliothek (nur Eigengewicht) erzeugen: ex1-4.py (deutsche Texte, Level, Geräte, Korrekturen) + free-exercise-db (Muskeln, Fotos)
+   → src/exercises.js + www/ex/*.webp.  Aufruf: python3 scripts/data/exercises/gen_exercises.py --img"""
 import json, os, sys, io, urllib.request, concurrent.futures as cf
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ex1 import E1; from ex2 import E2; from ex3 import E3
+from ex1 import E1; from ex2 import E2; from ex3 import E3; from ex4 import E4, FIX, DROP
+BODY = {'koerper', 'matte', 'moebel', 'stange'}   # nur Eigengewicht (+ Haushalt, Klimmzugstange/Barren)
 from PIL import Image
 # Datensatz: https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json (Public Domain) – Pfad per EXDB oder neben diesem Skript
 DB = json.load(open(os.environ.get('EXDB', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'exercises.json'))))
@@ -12,7 +13,8 @@ OUT = f'{APP}/www/ex'
 MAP = {'abdominals': 'abs', 'abductors': 'abductors', 'adductors': 'adductors', 'biceps': 'biceps', 'calves': 'calves', 'chest': 'chest', 'forearms': 'forearms',
        'glutes': 'glutes', 'hamstrings': 'hamstrings', 'lats': 'lats', 'lower back': 'lowerback', 'middle back': 'midback', 'neck': 'neck', 'quadriceps': 'quads',
        'shoulders': 'shoulders', 'traps': 'traps', 'triceps': 'triceps'}
-ALL = E1 + E2 + E3
+ALL = [((e[0],) + FIX[e[0]]) if e[0] in FIX else e for e in E1 + E2 + E3] + E4
+ALL = [e for e in ALL if e[0] not in DROP and e[3] in BODY]
 seen = set(); rows = []; missing = []
 for (did, name, lvl, eq, typ, mode, steps, tip, ex) in ALL:
     if did in seen: print('doppelt', did); continue
@@ -25,6 +27,11 @@ for (did, name, lvl, eq, typ, mode, steps, tip, ex) in ALL:
     key = did.lower().replace('-', '_').replace('__', '_')
     rows.append(dict(id=key, src=did, n=name, l=lvl, eq=eq, t=typ, mo=mode, s=steps, tip=tip, p=prim, s2=sec, uni=ex.get('uni', 0), tags=ex.get('tags', []), imgs=len(d['images'])))
 print('Übungen:', len(rows), 'fehlend:', missing)
+import shutil
+if os.path.isdir(OUT):
+    keep = {r['id'] for r in rows}
+    for dname in os.listdir(OUT):
+        if dname not in keep: shutil.rmtree(os.path.join(OUT, dname))
 def fetch(r):
     os.makedirs(f"{OUT}/{r['id']}", exist_ok=True); n = 0
     for i in range(min(2, r['imgs'])):
@@ -50,3 +57,4 @@ print('exercises.js', len(js) // 1024, 'KB')
 import collections
 print('Level:', collections.Counter(r['l'] for r in rows)); print('Gerät:', collections.Counter(r['eq'] for r in rows)); print('Typ:', collections.Counter(r['t'] for r in rows))
 print('Muskeln:', collections.Counter(m for r in rows for m in r['p']))
+print('ohne Stange:', sum(1 for r in rows if r['eq'] != 'stange'))
