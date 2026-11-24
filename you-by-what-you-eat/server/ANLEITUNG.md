@@ -53,10 +53,11 @@ sudo systemctl restart ybwye
 Test im Handy-Browser: `https://ybwye.tail1234.ts.net/api/health` → zeigt `"ok":true`.
 
 ## 5. In der App
-1. **Freunde → Eigener Server**: Adresse + Einladungsschlüssel + dein Name → Verbinden.
-2. **Gruppe erstellen** (z. B. „Gym Crew 🏋️“).
-3. **Einladen** → Link per WhatsApp schicken. Freunde tippen darauf → „In der App öffnen“ → Name eingeben → sind drin.
-   Alternativ den 6-stelligen Gruppen-Code in der App unter **Freunde → Einladung** eingeben.
+1. Unten auf **Freunde** tippen. Bei **„Einladung annehmen“** den Einladungsschlüssel ins erste Feld, deine Server-Adresse ins zweite, deinen Namen ins dritte → **Beitreten**.
+2. **+ Gruppe** → Name und Symbol wählen (z. B. „Gym-Gang 🔥“) → **Erstellen**.
+3. Auf der Gruppenseite **Teilen** oder **WhatsApp** → Link verschicken. Freunde öffnen den Link → „In der App öffnen“ → Name eingeben → **Beitreten** → sind direkt im Gruppenchat.
+   Oder: Freunde scannen den **QR-Code** mit der Handykamera, oder sie fügen den Link bzw. den 6-stelligen Gruppen-Code bei „Einladung annehmen“ ein (Code + Server-Adresse).
+4. Wer schon verbunden ist, tritt weiteren Gruppen über **Code** (oben bei den Chats) bei.
 
 ## 6. App für Freunde direkt vom Pi (optional)
 APK vom PC auf den Pi kopieren und ablegen:
@@ -81,4 +82,4 @@ Dann zeigt die Einladungsseite automatisch „App herunterladen“.
 - Neue Konten gibt es nur mit Einladungsschlüssel oder Gruppen-Code – Fremde kommen nicht rein.
 - Bilder liegen unter einer zufälligen, nicht erratbaren Adresse.
 - Stromverbrauch des Pi: ca. 3 W → rund 8 € im Jahr.
-- Nur im WLAN zu Hause geht auch ohne Tailscale: Adresse `http://ybwye.local:8787`.
+- Nur im WLAN zu Hause geht auch ohne Tailscale: Adresse `http://192.168.x.x:8787` (IP des Pi aus dem Router; `.local`-Namen kennt Android oft nicht).
