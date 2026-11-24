@@ -20,6 +20,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 - **15 Trainingsarten × 4 Level**, Pläne für Frauen und Männer, Workout-Player mit Sätzen, Wiederholungen, Pausen-Ring und Rekorden
 - **Freunde & Gruppen** über einen eigenen Server (z. B. Raspberry Pi): Gruppenchat mit Fotos, fertigen und selbstgemachten Stickern, Reaktionen, Wochen-Rangliste mit Podium, Feed, Folgen per Freundescode, 1-gegen-1-Vergleich, Einladung per Link/QR-Code. Workouts und Läufe werden automatisch geteilt (abschaltbar).
 
+![Chat, Rangliste, 1 gegen 1, Gruppe mit QR-Code, Sticker, Sticker-Editor](docs/screens-2.0.png)
+
 ## Was die App kann
 
 | Bereich | Funktion |
