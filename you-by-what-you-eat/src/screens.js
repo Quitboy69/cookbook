@@ -891,7 +891,7 @@ export function ich() {
       ${row('', 'edit', 'Backup einspielen', 'Text aus einem Backup einfügen', 'restore')}
       ${row('', 'trash', 'Alles zurücksetzen', 'Plan, Bons, Bewertungen löschen', 'reset')}
     </div>
-    <p class="about rise">You By What You Eat · Version 2.0.0<br>Alle Daten bleiben auf deinem Handy – nur was du mit Freunden teilst, liegt auf eurem eigenen Server.</p>
+    <p class="about rise">You By What You Eat · Version 2.1.0<br>Alle Daten bleiben auf deinem Handy – nur was du mit Freunden teilst, liegt auf eurem eigenen Server.</p>
   </div>` };
 }
 

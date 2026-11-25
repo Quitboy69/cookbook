@@ -477,7 +477,8 @@ export function actions() {
     'so-col'(el) { ui3.setup.color = el.dataset.v; $$('.col-pick button').forEach(b => b.classList.toggle('on', b === el)); haptic.tap(); },
     'so-howto'() { sheet(howtoHTML()); },
     async 'so-join'(el) {
-      const s = ui3.setup, first = SO.cloud.ok && SO.cloud.setup; const p = first ? { url: '', code: '' } : (SO.parseInvite(s.inv) || (s.inv.trim() ? null : { url: '', code: '' }));
+      const s = ui3.setup; let first = SO.cloud.ok && SO.cloud.setup; let p = first ? { url: '', code: '' } : (SO.parseInvite(s.inv) || (s.inv.trim() ? null : { url: '', code: '' }));
+      if ((!p || !p.code) && !first && (s.url || (p && p.url))) { try { const h = await SO.api('/api/health', { url: SO.normUrl((p && p.url) || s.url), token: '' }); if (h && h.setup) { first = true; p = { url: (p && p.url) || '', code: '' }; } } catch (e) { /* Adresse falsch oder offline – unten kommt die Meldung */ } }
       if (!p || (!p.code && !first)) { toast('Bitte den Einladungslink oder Code einfügen.', 'toast-warn'); return; }
       const url = p.url || s.url || (SO.cloud.ok ? location.origin : ''); if (!url) { toast('Bitte noch die Server-Adresse eintragen.', 'toast-warn'); return; }
       if (!(s.name || S.profile.name || '').trim()) { toast('Wie heißt du?', 'toast-warn'); return; }

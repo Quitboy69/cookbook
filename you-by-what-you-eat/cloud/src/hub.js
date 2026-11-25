@@ -242,6 +242,7 @@ async function makeCore(ctx, env) {
       const s = { write(str) { if (closed) return; w.write(enc.encode(str)).catch(() => s.close()); }, close() { if (closed) return; closed = true; const set = streams.get(u.id); if (set) { set.delete(s); if (!set.size) streams.delete(u.id); } try { w.close(); } catch (e) { /* egal */ } } };
       if (!streams.has(u.id)) streams.set(u.id, new Set()); streams.get(u.id).add(s);
       req.signal.addEventListener('abort', () => s.close()); w.closed.catch(() => s.close());
+      setTimeout(() => s.close(), 30 * 60 * 1000);   // alte, vergessene Verbindungen räumt der Server selbst weg (die App verbindet sich neu)
       s.write(`retry: 3000\nevent: hello\ndata: ${JSON.stringify({ seq: st.seq })}\n\n`);
       return new Response(ts.readable, { headers: { ...CORS, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' } });
     }

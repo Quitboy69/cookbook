@@ -901,8 +901,11 @@ SO.on((ev, d) => {
   if (ev === 'strava') Strava.refreshServer().then(() => { toast('Mit Strava verbunden ✓'); stravaSync(false, 30); refresh(); });
 });
 SO.setNotifier(chatNotify);
+let hiddenT = null;
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || !SO.online()) return;
+  if (document.hidden) { clearTimeout(hiddenT); hiddenT = setTimeout(() => { if (document.hidden && !isNative) SO.disconnect(); }, 120000); return; }   // Verdeckte Web-App schließt nach 2 Min. die Live-Verbindung (spart Gratis-Kontingent; Mitteilungen übernehmen)
+  clearTimeout(hiddenT);
+  if (!SO.online()) return;
   if (SO.live.status !== 'on') SO.connect();
   const r = current(); if (r.startsWith('#/chat/')) { const id = decodeURIComponent(r.slice(7)); SO.loadChat(id).then(real => SO.markRead(real)).catch(() => {}); }
 });
