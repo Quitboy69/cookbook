@@ -14,6 +14,8 @@ Android-App (APK) für einen persönlichen Speiseplan. Sie lernt aus deinen Kass
 
 **Version 1.4.1:** Zahlen-Animation (Kalorien, Ring) zeigt in den ersten Millisekunden keine falschen Werte mehr.
 
+**Version 2.1:** iPhone-Version ohne Pi. App und Chat-Server laufen zusammen kostenlos bei Cloudflare (`cloud/`, Anleitung: `cloud/ANLEITUNG.md`). Vorbereitete Konten mit persönlichem Link (Öffnen → Home-Bildschirm → fertig), Strava-Verbindung über den Server mit einem Tipp, „X folgt dir“ öffnet automatisch einen Chat, Mitteilungen auf dem iPhone (Web-Push).
+
 **Version 2.0:** Training ohne Geräte und Freunde.
 - **137 Übungen nur mit dem eigenen Körper** (Boden/Matte, Stuhl/Bank, optional Klimmzugstange), jede mit Fotos, Schritt-für-Schritt-Anleitung, Tipp und Level (Einsteiger, Amateur, Fortgeschritten, Profi)
 - **Muskel-Grafik** (vorne/hinten): Hauptmuskeln und Mitarbeiter bei jeder Übung, Muskel antippen filtert die Bibliothek, Wochen-Heatmap

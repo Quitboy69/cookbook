@@ -1,7 +1,8 @@
 /* Strava: Läufe aus dem eigenen Strava-Konto holen (offizielle API, Lesezugriff).
    Jeder nutzt seine eigene kleine „API-Anwendung“ (strava.com/settings/api) – Schlüssel und Tokens bleiben nur auf dem Handy. */
 import { S, save } from './store.js';
-import { http, openExternal } from './native.js';
+import { http, openExternal, isNative } from './native.js';
+import * as SO from './social.js';
 
 export const REDIRECT = 'ybwye://localhost';          // Rückkehr in die App (Callback-Domain in Strava: localhost)
 export const MANUAL_REDIRECT = 'http://localhost/exchange_token';
@@ -9,7 +10,16 @@ const BASE = 'https://www.strava.com';
 const RUN_TYPES = new Set(['Run', 'TrailRun', 'VirtualRun']);
 
 const sv = () => S.strava;
-export const connected = () => !!(S.strava && S.strava.refresh);
+/* Cloud-Modus: Anmeldung und Abfragen laufen über den Server – die Freunde tippen nur „Verbinden“ */
+export const server = { enabled: false, connected: false, athlete: '', checked: false };
+export async function refreshServer() {
+  if (!SO.online()) return false;
+  try { const r = await SO.api('/api/strava/status'); const changed = r.enabled !== server.enabled || r.connected !== server.connected || r.athlete !== server.athlete; Object.assign(server, { enabled: !!r.enabled, connected: !!r.connected, athlete: r.athlete || '', checked: true }); return changed; } catch (e) { return false; }
+}
+const local = () => !!(S.strava && S.strava.refresh);
+export const viaServer = () => server.connected && !local();
+export async function startServerAuth() { const r = await SO.api('/api/strava/start', { method: 'POST' }); if (isNative) await openExternal(r.url); else location.assign(r.url); }
+export const connected = () => local() || server.connected;
 export const hasKeys = () => !!(S.strava && S.strava.cid && S.strava.secret);
 export const validKeys = (cid, secret) => /^\d{3,10}$/.test(String(cid).trim()) && /^[0-9a-f]{20,64}$/i.test(String(secret).trim());
 export function setKeys(cid, secret) { sv().cid = String(cid).trim(); sv().secret = String(secret).trim(); save(true); }
@@ -58,6 +68,7 @@ export async function redeem(code, scope) {
   apply(await tokenCall({ client_id: sv().cid, client_secret: sv().secret, code, grant_type: 'authorization_code' }));
 }
 export function disconnect() {
+  if (viaServer()) { server.connected = false; SO.api('/api/strava', { method: 'DELETE' }).catch(() => {}); }
   const s = sv(); s.access = ''; s.refresh = ''; s.exp = 0; s.athlete = ''; s.last = 0; s.since = 0; s.pending = 0; save(true);
 }
 
@@ -69,7 +80,16 @@ async function token() {
   apply(await tokenCall({ client_id: s.cid, client_secret: s.secret, grant_type: 'refresh_token', refresh_token: s.refresh }));
   return s.access;
 }
+async function getViaServer(path) {
+  try { return await SO.api('/api/strava/api?path=' + encodeURIComponent(path), { timeout: 30000 }); }
+  catch (e) {
+    if (e.code === 429) throw err('limit', 'Strava-Limit erreicht – bitte in ein paar Minuten nochmal.');
+    if (e.code === 'auth' || e.code === 401 || e.code === 403) { server.connected = false; throw err('auth', 'Die Strava-Verbindung ist abgelaufen. Bitte neu verbinden.'); }
+    throw err('http', e.code === 'net' ? 'Keine Verbindung zum Server.' : 'Strava-Fehler: ' + e.message);
+  }
+}
 async function get(path) {
+  if (viaServer()) return getViaServer(path);
   const r = await http(BASE + '/api/v3' + path, { headers: { Authorization: 'Bearer ' + await token(), Accept: 'application/json' } });
   if (r.status === 429) throw err('limit', 'Strava-Limit erreicht – bitte in ein paar Minuten nochmal.');
   if (r.status === 401 || r.status === 403) {

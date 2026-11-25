@@ -785,6 +785,16 @@ const A = {
     if (!stravaKeys()) return;
     await stravaFinish(Strava.parseAuth(($('#st-paste') || {}).value || ''));
   },
+  async 'strava-connect-srv'() { try { toast('Strava öffnet sich …'); await Strava.startServerAuth(); } catch (e) { toast((e && e.message) || 'Das hat nicht geklappt.', 'toast-warn'); } },
+  async 'strava-save-srv'() {
+    const cid = ($('#sv-cid') || {}).value || '', sec = ($('#sv-sec') || {}).value || '';
+    try { await SO.api('/api/admin/strava', { method: 'PUT', body: { clientId: cid, clientSecret: sec } }); await Strava.refreshServer(); haptic.ok(); toast('Strava ist eingerichtet ✓ – jetzt kann jeder „Mit Strava verbinden“ tippen.'); refresh(); } catch (e) { toast((e && e.message) || 'Das hat nicht geklappt.', 'toast-warn'); }
+  },
+  'strava-limit-info'() {
+    sheet(`<h2 class="sh-t">Mehr als 1 Person bei Strava</h2><p class="sh-sub">Strava erlaubt einer neuen App zuerst nur den Besitzer selbst. Für deine Freunde musst du einmal eine Erhöhung beantragen:</p>
+      <ol class="howto"><li>Seite „Rate Limits“ von Strava öffnen und unten das Formular ausfüllen.</li><li>Als Grund z. B.: „Private Trainingsgruppe mit 5 Freunden, nur Lesezugriff auf eigene Läufe.“</li><li>Die Prüfung dauert laut Strava etwa 5–7 Werktage. Bis dahin klappt Strava nur bei dir.</li></ol>
+      <button class="btn wide tap" id="sl-open">Strava-Seite öffnen</button>`, (sh) => { $('#sl-open', sh).addEventListener('click', () => openExternal('https://developers.strava.com/docs/rate-limits/')); });
+  },
   'strava-sync'() { haptic.tap(); stravaSync(true, 30); },
   'strava-file'() { const f = $('#st-file'); if (f) f.click(); },
   'strava-off'() {
@@ -885,7 +895,11 @@ Object.assign(A, V3.actions());
 /* ---------- Community: Live-Verbindung, Ungelesen-Zähler, Benachrichtigungen ---------- */
 window.__social = SO;
 function navBadge(n) { const b = $('#nav-badge'); if (!b) return; b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n || ''); }
-SO.on(ev => { if (ev === 'unread') navBadge(SO.live.unread); });
+SO.on((ev, d) => {
+  if (ev === 'unread') navBadge(SO.live.unread);
+  if (ev === 'follow' && d && d.from) { V3.ui3.cache.friends = null; haptic.ok(); toast(`<span class="tt-go" data-go="#/chat/dm.${d.from.id}">👋 <b>${esc(d.from.name)}</b> folgt dir jetzt – <u>Hallo sagen</u></span>`, 'tap'); }
+  if (ev === 'strava') Strava.refreshServer().then(() => { toast('Mit Strava verbunden ✓'); stravaSync(false, 30); refresh(); });
+});
 SO.setNotifier(chatNotify);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !SO.online()) return;
@@ -959,10 +973,50 @@ document.addEventListener('change', e => {
 });
 
 /* ---------- Start ---------- */
+/* ---------- Web-App (iPhone/Browser): Zugangslink, Einladung, Hinweise ---------- */
+let pendingGo = '';
+function applyPreset(user, preset) {
+  if (S.profile.onboarded) return;
+  Object.assign(S.profile, { name: user.name, sex: (preset && preset.sex) || 'm', onboarded: true });
+  S.seen.v11 = true; S.seen.v20 = true; save(true); E.ensurePlan();
+}
+async function launchParams() {
+  if (isNative) return false;
+  const q = new URLSearchParams(location.search), k = q.get('k'), c = q.get('c');
+  await SO.detectCloud();
+  const link = document.querySelector('link[rel=manifest]'); if (link && (k || c)) link.href = 'manifest.webmanifest?' + (k ? 'k=' + encodeURIComponent(k) : 'c=' + encodeURIComponent(c));
+  let welcomed = false;
+  if (k && (!SO.online() || SO.soc().token !== k)) {
+    try { const r = await SO.loginWithToken(k); applyPreset(r.user, r.preset); if (!S.seen.welcome) { S.seen.welcome = 1; save(true); welcomed = r.user.name; } }
+    catch (e) { toast('Dieser Zugangslink gilt nicht mehr. Bitte den Besitzer um einen neuen Link.', 'toast-warn'); }
+  }
+  if (c && !SO.online()) { V3.prepareInvite(c); pendingGo = '#/freunde'; }
+  if (/^#\/chat\//.test(location.hash)) pendingGo = location.hash;
+  if (SO.isStandalone() && (k || c)) history.replaceState(null, '', location.pathname + location.hash);   // im Safari-Tab bleibt der Link stehen, damit „Zum Home-Bildschirm“ ihn behält
+  if (welcomed) setTimeout(() => V3.welcomeSheet(welcomed), 1200);
+  return !!welcomed;
+}
+function iosBanner() {
+  if (isNative || !SO.isIOS || SO.isStandalone() || S.seen.iosHide) return;
+  const b = document.createElement('button'); b.className = 'ios-banner tap'; b.innerHTML = '📲 <span><b>Als App installieren</b><small>Teilen ⎙ → „Zum Home-Bildschirm“</small></span><i>✕</i>';
+  b.addEventListener('click', e => { if (e.target.tagName === 'I') { S.seen.iosHide = 1; save(); b.remove(); return; } sheet(`<h2 class="sh-t">Auf den Home-Bildschirm</h2><ol class="howto"><li>Unten in Safari auf <b>Teilen ⎙</b> tippen (Quadrat mit Pfeil).</li><li>Nach unten scrollen und <b>„Zum Home-Bildschirm“</b> wählen.</li><li><b>„Hinzufügen“</b> tippen.</li><li>Ab jetzt die App <b>vom Home-Bildschirm</b> öffnen – nur dann gehen auch Mitteilungen.</li></ol><button class="btn wide tap" data-close>Verstanden</button>`); });
+  document.body.appendChild(b);
+}
+function registerSW() {
+  if (isNative || !('serviceWorker' in navigator) || !(location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) return;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    const d = e.data || {};
+    if (d.type === 'go' && d.url) { const h = new URL(d.url, location.origin).hash; if (h) go(h); }
+  });
+}
+
 async function boot() {
   applyTheme();
   E.ensurePlan();
   initRouter();
+  registerSW();
+  await launchParams();
   if (!S.profile.onboarded) setTimeout(() => go('#/onboarding', { replace: true }), 30);
   else if (!S.seen.v11) setTimeout(() => {
     sheet(`<div class="learn-sum"><span class="ls-emo">🏃✨</span><h2 class="sh-t">Neu: Laufen & Mini-Workouts</h2><p class="sh-sub">Die App plant jetzt Laufeinheiten und erinnert dich daran. Keine Lust zu laufen? Dann gibt’s ein kurzes Workout mit Anleitung und Timer. Stell kurz ein, wann du laufen willst:</p></div>${V.runSetupHTML()}<button class="btn wide tap" data-close>Passt so</button>`);
@@ -996,7 +1050,9 @@ async function boot() {
     if (S.profile.onboarded) scheduleAll();
   } else notifPerm = 'browser';
   stravaAuto();
-  if (SO.online()) { SO.connect(); SO.refreshLists().catch(() => {}); }
+  if (SO.online()) { SO.connect(); SO.refreshLists().catch(() => {}); SO.refreshPush(); Strava.refreshServer().then(() => stravaAuto()); }
+  if (pendingGo && S.profile.onboarded) setTimeout(() => go(pendingGo), 400);
+  iosBanner();
   setTimeout(() => document.body.classList.add('ready'), 50);
 }
 boot();

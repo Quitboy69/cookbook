@@ -1,0 +1,18 @@
+# You By What You Eat – Cloud-Version (ohne Raspberry Pi): App + Chat-Server auf Cloudflare (kostenlos)
+name = "ybwye"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "../www"
+binding = "ASSETS"
+run_worker_first = ["/manifest.webmanifest"]   # damit der persönliche Zugangslink im Manifest landet
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]

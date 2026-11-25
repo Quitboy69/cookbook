@@ -7,7 +7,7 @@ import { PACKS, stickerSVG, EMOJIS, editorState, renderSticker, exportSticker, d
 import { $, $$, ico, esc, toast, sheet, go, back, refresh, current, confetti } from './ui.js';
 import { haptic, isNative, openExternal, shareText } from './native.js';
 
-export const ui3 = { tab: 'chats', period: 'week', scope: '', cache: { lb: {}, feed: null, friends: null, prof: {}, gi: {} }, setup: { inv: '', url: '', name: '', color: '' }, panel: false, stTab: 'gym', ed: null, alias: {} };
+export const ui3 = { accs: [], tab: 'chats', period: 'week', scope: '', cache: { lb: {}, feed: null, friends: null, prof: {}, gi: {} }, setup: { inv: '', url: '', name: '', color: '' }, panel: false, stTab: 'gym', ed: null, alias: {} };
 const COLORS = ['#12B886', '#3B82F6', '#F97316', '#EC4899', '#8B5CF6', '#EAB308', '#EF4444', '#14B8A6', '#6366F1', '#84CC16'];
 const REACT = ['🔥', '💪', '😂', '❤️', '👏', '😮'];
 const GEMO = ['💪', '🔥', '🏃', '🏋️', '🧘', '🥗', '⚡', '🏆', '👑', '🦁', '🐺', '🚀', '🍑', '🎯', '🌊', '❤️'];
@@ -109,7 +109,7 @@ function friendsHTML() {
   const myCard = `<article class="card so-code rise"><p class="kicker">Dein Freundescode</p><div class="code-big">${esc(m.code || '······').split('').map(c => `<i>${c}</i>`).join('')}</div><p class="fine">Gib den Code an Freunde weiter – sie tragen ihn hier ein und folgen dir.</p><div class="rc-btns"><button class="btn ghost tap" data-act="so-copy" data-v="${esc(m.code || '')}">${ico('copy')}Kopieren</button><button class="btn ghost tap" data-act="so-share-code">${ico('share')}Teilen</button></div></article>
     <article class="card rise"><div class="c-h">${ico('plus')}Freund hinzufügen</div><div class="so-add"><input id="so-fcode" maxlength="6" placeholder="Code, z. B. K7M2QX" autocomplete="off" autocapitalize="characters"><button class="btn tap" data-act="so-follow-code">Folgen</button></div></article>`;
   if (!d) return myCard + skel(3);
-  const row = (u, back) => `<div class="fr-row">${`<button class="fr-u tap" data-go="#/sprofil/${u.id}">${av(u, 44)}<span><b>${esc(u.name)}</b><small>${fmt(u.stats.pts)} Pkt diese Woche${u.stats.streak ? ' · 🔥' + u.stats.streak : ''}</small></span></button>`}${back && !u.following ? `<button class="btn sm tap" data-act="so-follow" data-id="${u.id}">Zurückfolgen</button>` : `<button class="iconbtn sm tap" data-go="#/chat/dm.${u.id}" aria-label="Nachricht">${ico('chat')}</button><button class="iconbtn sm tap" data-go="#/duell/${u.id}" aria-label="Vergleichen">${ico('trophy')}</button>`}</div>`;
+  const row = (u, back) => `<div class="fr-row">${`<button class="fr-u tap" data-go="#/sprofil/${u.id}">${av(u, 44)}<span><b>${esc(u.name)}</b><small>${fmt(u.stats.pts)} Pkt diese Woche${u.stats.streak ? ' · 🔥' + u.stats.streak : ''}</small></span></button>`}${back && !u.following ? `<button class="btn sm ghost tap" data-act="so-follow" data-id="${u.id}">Folgen</button>` : ''}<button class="iconbtn sm tap" data-go="#/chat/dm.${u.id}" aria-label="Nachricht">${ico('chat')}</button><button class="iconbtn sm tap" data-go="#/duell/${u.id}" aria-label="Vergleichen">${ico('trophy')}</button></div>`;
   return myCard + `<section class="sec rise"><h2>Du folgst <small>${d.following.length}</small></h2></section>
     <div class="card fr-list rise">${d.following.length ? d.following.map(u => row(u)).join('') : '<p class="empty">Noch niemand – trag oben einen Code ein.</p>'}</div>
     <section class="sec rise"><h2>Folgen dir <small>${d.followers.length}</small></h2></section>
@@ -145,23 +145,27 @@ export function handleErr(e) {
 
 /* ---- Einrichtung (noch nicht verbunden) ---- */
 function setupHTML() {
-  const s = ui3.setup, col = s.color || COLORS[0];
-  return `<header class="top rise"><div><p class="kicker">Community</p><h1 class="h1">Freunde</h1></div></header>
+  const s = ui3.setup, col = s.color || COLORS[0], cl = SO.cloud, first = cl.ok && cl.setup;
+  const colors = `<span class="flabel">Deine Farbe</span><div class="col-pick">${COLORS.map(c => `<button class="tap${c === col ? ' on' : ''}" data-act="so-col" data-v="${c}" style="--c:${c}" aria-label="Farbe"></button>`).join('')}</div>`;
+  const hero = `<header class="top rise"><div><p class="kicker">Community</p><h1 class="h1">Freunde</h1></div></header>
   <article class="card so-hero rise"><div class="so-hero-art"><span class="h-av" style="--c:#EC4899">L</span><span class="h-av" style="--c:#3B82F6">M</span><span class="h-av" style="--c:#F97316">S</span><span class="h-cup">🏆</span><span class="h-b b1">Neuer Rekord 💪</span><span class="h-b b2">🔥 3 Workouts!</span></div>
     <h2>Zusammen trainieren.<br>Gegeneinander gewinnen.</h2>
-    <ul class="so-feat"><li><b>💬</b>Gruppenchat mit Fotos und Stickern – fertige und selbstgemachte</li><li><b>🏆</b>Wochen-Rangliste: wer sammelt die meisten Punkte?</li><li><b>⚔️</b>1 gegen 1 vergleichen – Workouts, km, Serie</li><li><b>🔥</b>Dein Fortschritt erscheint automatisch bei deinen Freunden</li></ul></article>
-  <article class="card rise"><div class="c-h">${ico('link')}Einladung annehmen</div>
+    <ul class="so-feat"><li><b>💬</b>Gruppenchat mit Fotos und Stickern – fertige und selbstgemachte</li><li><b>🏆</b>Wochen-Rangliste: wer sammelt die meisten Punkte?</li><li><b>⚔️</b>1 gegen 1 vergleichen – Workouts, km, Serie</li><li><b>🔥</b>Dein Fortschritt erscheint automatisch bei deinen Freunden</li></ul></article>`;
+  if (cl.ok) return hero + `<article class="card rise"><div class="c-h">${first ? ico('star') + 'Server einrichten' : ico('link') + 'Beitreten'}</div>
+    ${first ? '<p class="rc-desc">Du bist der <b>Erste</b> hier – du wirst der <b>Besitzer</b> dieses Servers. Danach kannst du Konten für deine Freunde anlegen.</p>' : `<label class="field"><span>Einladungslink oder Code</span><textarea id="so-inv" rows="2" placeholder="Code aus der Nachricht einfügen …">${esc(s.inv)}</textarea></label>`}
+    <label class="field"><span>Dein Name</span><input id="so-name" maxlength="30" value="${esc(s.name || S.profile.name || '')}" placeholder="z. B. Lisa"></label>${colors}
+    <button class="btn big wide tap" data-act="so-join" id="so-join">${ico('people')}${first ? 'Einrichten' : 'Beitreten'}</button></article>`;
+  return hero + `<article class="card rise"><div class="c-h">${ico('link')}Einladung annehmen</div>
     <label class="field"><span>Einladungslink oder Code</span><textarea id="so-inv" rows="2" placeholder="Link aus WhatsApp einfügen …">${esc(s.inv)}</textarea></label>
-    <label class="field"><span>Server-Adresse <small class="soft">(steht im Link – nur bei reinem Code nötig)</small></span><input id="so-url" value="${esc(s.url)}" placeholder="https://dein-pi.ts.net" autocomplete="off" autocapitalize="off" inputmode="url"></label>
-    <label class="field"><span>Dein Name</span><input id="so-name" maxlength="30" value="${esc(s.name || S.profile.name || '')}" placeholder="z. B. Lisa"></label>
-    <span class="flabel">Deine Farbe</span><div class="col-pick">${COLORS.map(c => `<button class="tap${c === col ? ' on' : ''}" data-act="so-col" data-v="${c}" style="--c:${c}" aria-label="Farbe"></button>`).join('')}</div>
+    <label class="field"><span>Server-Adresse <small class="soft">(steht im Link – nur bei reinem Code nötig)</small></span><input id="so-url" value="${esc(s.url)}" placeholder="https://dein-server.workers.dev" autocomplete="off" autocapitalize="off" inputmode="url"></label>
+    <label class="field"><span>Dein Name</span><input id="so-name" maxlength="30" value="${esc(s.name || S.profile.name || '')}" placeholder="z. B. Lisa"></label>${colors}
     <button class="btn big wide tap" data-act="so-join" id="so-join">${ico('people')}Beitreten</button></article>
-  <article class="card so-host rise"><div class="c-h">${ico('info')}Noch kein Server?</div><p class="rc-desc">Eure Chats laufen auf eurem eigenen kleinen Server – zum Beispiel einem Raspberry Pi 3B+ zu Hause. Der schafft locker 100 Leute, und eure Daten landen bei keiner fremden Firma.</p><button class="btn ghost wide tap" data-act="so-howto">${ico('book')}So richtest du ihn ein</button></article>`;
+  <article class="card so-host rise"><div class="c-h">${ico('info')}Noch kein Server?</div><p class="rc-desc">Eure Chats laufen auf eurem eigenen kleinen Server – kostenlos bei Cloudflare, ohne eigenen Rechner. Die Anleitung dazu steht im Projekt unter <b>cloud/ANLEITUNG.md</b>.</p></article>`;
 }
 function mountSetup(el) {
   const inv = $('#so-inv', el), url = $('#so-url', el), name = $('#so-name', el);
-  const sync = () => { ui3.setup.inv = inv.value; ui3.setup.url = url.value; ui3.setup.name = name.value; const p = SO.parseInvite(inv.value); if (p && p.url && !url.value) { url.value = p.url; ui3.setup.url = p.url; } };
-  [inv, url, name].forEach(i => i.addEventListener('input', sync));
+  const sync = () => { if (inv) ui3.setup.inv = inv.value; if (url) ui3.setup.url = url.value; if (name) ui3.setup.name = name.value; const p = inv && SO.parseInvite(inv.value); if (p && p.url && url && !url.value) { url.value = p.url; ui3.setup.url = p.url; } };
+  [inv, url, name].filter(Boolean).forEach(i => i.addEventListener('input', sync));
 }
 export function howtoHTML() {
   return `<h2 class="sh-t">Eigener Server in 20 Minuten</h2><ol class="howto">
@@ -373,11 +377,29 @@ export function sprofil(id) {
     ${d && d.total ? `<article class="card rise pf-total"><div class="c-h">${ico('trophy')}Insgesamt</div><div class="stats3"><span><b>${fmt(d.total.pts)}</b>Punkte</span><span><b>${d.total.workouts}</b>Workouts</span><span><b>${lit(d.total.km)}</b>km</span></div></article>` : ''}
     ${isMe ? meSettingsHTML() : ''}
     ${d && d.acts && d.acts.length ? `<section class="sec rise"><h2>Letzte Aktivitäten</h2></section>${d.acts.slice(0, 10).map(a => actCard(a, u)).join('')}` : ''}`;
-  return { html: pg(html), mount: load };
+  return { html: pg(html), mount: el => { load(el); if (isMe) { fillPush(el); fillAccs(el); SO.me().then(() => { if (SO.soc().owner && !$('#so-accs', el) && el.isConnected) refresh(); }).catch(() => {}); } } };
+}
+async function fillPush(el) { const b = $('#so-push', el); if (!b) return; try { b.innerHTML = pushHTML(await SO.pushInfo()); } catch (e) { /* egal */ } }
+async function fillAccs(el) { if (!SO.soc().owner) return; try { const next = (await SO.accounts()).accounts; if (JSON.stringify(next) !== JSON.stringify(ui3.accs)) { ui3.accs = next; const b = $('#so-accs', el); if (b) b.innerHTML = next.map(accRow).join(''); } } catch (e) { /* egal */ } }
+const accMsg = a => `Hey ${a.name}! 💪 Hier ist dein Zugang zu unserer Trainings-App:\n\n${a.link}\n\nSo geht's (30 Sekunden):\n1. Link öffnen (am iPhone in Safari)\n2. Unten auf Teilen ⎙ tippen → „Zum Home-Bildschirm“ → „Hinzufügen“\n3. Die App vom Home-Bildschirm öffnen – du bist schon drin, nichts einzutippen\n4. Auf „Strava verbinden“ tippen`;
+const accRow = (a, i) => `<button class="acc-row tap" data-act="so-acc-open" data-i="${i}"><span class="av" style="--s:34px;--c:${esc(a.color || '#12B886')}">${esc(a.name[0].toUpperCase())}</span><span><b>${esc(a.name)}</b><small>Link tippen zum Verschicken</small></span><i>${ico('share')}</i></button>`;
+export function pushHTML(i) {
+  const row = (t, sub, btns = '') => `<div class="push-row"><span><b>${t}</b><small>${sub}</small></span>${btns}</div>`;
+  if (i.state === 'native') return '';
+  if (i.state === 'install') return row('🔔 Mitteilungen', 'Auf dem iPhone erst möglich, wenn die App auf dem Home-Bildschirm liegt: Teilen ⎙ → „Zum Home-Bildschirm“.');
+  if (i.state === 'unsupported') return row('🔔 Mitteilungen', 'Dieser Browser kann keine Mitteilungen anzeigen.');
+  if (i.state === 'denied') return row('🔔 Mitteilungen blockiert', 'Bitte in den Einstellungen des Handys für diese App erlauben.');
+  if (i.state === 'on') return row('🔔 Mitteilungen sind an', 'Bei neuen Nachrichten und wenn dir jemand folgt.', `<span class="push-btns"><button class="btn sm ghost tap" data-act="so-push-test">Test</button><button class="btn sm ghost tap" data-act="so-push-off">Aus</button></span>`);
+  return row('🔔 Mitteilungen', 'Bei neuen Nachrichten und wenn dir jemand folgt – auch wenn die App zu ist.', `<button class="btn sm tap" data-act="so-push-on">Einschalten</button>`);
 }
 function meSettingsHTML() {
   const so = SO.soc();
-  return `<article class="card rise"><div class="c-h">${ico('bell')}Teilen & Verbindung</div>
+  const ownerCard = so.owner ? `<article class="card rise"><div class="c-h">${ico('people')}Konten für Freunde <small class="soft">· nur Besitzer</small></div>
+    <p class="rc-desc">Lege die Konten im Voraus an. Jeder bekommt einen <b>persönlichen Link</b>: öffnen, auf den Home-Bildschirm legen, fertig – nichts einzutippen, alle sind schon in der Gruppe und folgen sich.</p>
+    <div id="so-accs">${(ui3.accs || []).map(accRow).join('')}</div>
+    <button class="btn wide tap" data-act="so-acc-new">${ico('plus')}Konten anlegen</button>
+    ${so.invite ? `<p class="fine">Einladungsschlüssel für andere Leute: <button class="chip tap" data-act="so-copy" data-v="${esc(so.invite)}">${esc(so.invite)} ${ico('copy', 'xs')}</button></p>` : ''}</article>` : '';
+  return ownerCard + `<article class="card rise"><div class="c-h">${ico('bell')}Teilen & Verbindung</div><div id="so-push"></div>
     <label class="switch-row so-sw"><span><b>Fortschritt automatisch teilen</b><small>Workouts und Läufe erscheinen bei Freunden und in deinen Gruppen</small></span><input type="checkbox" data-so-auto ${so.auto !== false ? 'checked' : ''}><i class="sw"></i></label>
     <div class="switch-row so-sw"><span><b>Server</b><small>${esc(so.url)} ${statusDot()}</small></span></div>
     <div class="rc-btns"><button class="btn ghost tap" data-act="so-logout">Abmelden</button><button class="btn ghost danger tap" data-act="so-delete">Konto löschen</button></div></article>`;
@@ -455,18 +477,18 @@ export function actions() {
     'so-col'(el) { ui3.setup.color = el.dataset.v; $$('.col-pick button').forEach(b => b.classList.toggle('on', b === el)); haptic.tap(); },
     'so-howto'() { sheet(howtoHTML()); },
     async 'so-join'(el) {
-      const s = ui3.setup; const p = SO.parseInvite(s.inv) || (s.inv.trim() ? null : { url: '', code: '' });
-      if (!p || !p.code) { toast('Bitte den Einladungslink oder Code einfügen.', 'toast-warn'); return; }
-      const url = p.url || s.url; if (!url) { toast('Bitte noch die Server-Adresse eintragen.', 'toast-warn'); return; }
+      const s = ui3.setup, first = SO.cloud.ok && SO.cloud.setup; const p = first ? { url: '', code: '' } : (SO.parseInvite(s.inv) || (s.inv.trim() ? null : { url: '', code: '' }));
+      if (!p || (!p.code && !first)) { toast('Bitte den Einladungslink oder Code einfügen.', 'toast-warn'); return; }
+      const url = p.url || s.url || (SO.cloud.ok ? location.origin : ''); if (!url) { toast('Bitte noch die Server-Adresse eintragen.', 'toast-warn'); return; }
       if (!(s.name || S.profile.name || '').trim()) { toast('Wie heißt du?', 'toast-warn'); return; }
       el.disabled = true; el.innerHTML = 'Verbinde…';
       try {
         const r = await SO.register(url, p.code, (s.name || S.profile.name).trim(), s.color || COLORS[0]);
         haptic.ok(); confetti(window.innerWidth / 2, window.innerHeight / 3, 40);
-        toast(r.group ? `Willkommen in „${esc(r.group.name)}“ ${esc(r.group.emoji)}` : 'Verbunden ✓ – jetzt eine Gruppe erstellen!');
+        toast(r.group ? `Willkommen in „${esc(r.group.name)}“ ${esc(r.group.emoji)}` : r.owner ? 'Server eingerichtet ✓ – du bist der Besitzer. Lege jetzt Konten für deine Freunde an (Profil).' : 'Verbunden ✓ – jetzt eine Gruppe erstellen!');
         ui3.setup = { inv: '', url: '', name: '', color: '' }; ui3.tab = 'chats';
         refresh(false); if (r.group) setTimeout(() => go('#/chat/' + r.group.id), 500);
-      } catch (e) { el.disabled = false; el.innerHTML = ico('people') + 'Beitreten'; toast(esc(e.message), 'toast-warn'); }
+      } catch (e) { el.disabled = false; el.innerHTML = ico('people') + (SO.cloud.setup ? 'Einrichten' : 'Beitreten'); toast(esc(e.message), 'toast-warn'); }
     },
     'so-newgroup'() {
       let emo = GEMO[0];
@@ -542,6 +564,37 @@ export function actions() {
       i.onchange = async () => { const f = i.files && i.files[0]; if (!f) return; try { toast('Foto wird hochgeladen…'); const b = await shrinkImage(f, 400, 0.85, true); const url = await SO.upload(b); await SO.updateMe({ avatar: url }); haptic.ok(); refresh(); } catch (e) { handleErr(e); } };
       i.click();
     },
+    async 'so-push-on'() {
+      try { await SO.enablePush(); haptic.ok(); toast('Mitteilungen sind an 🔔'); } catch (e) { toast(esc((e && e.message) || 'Das hat nicht geklappt.'), 'toast-warn'); }
+      const b = $('#so-push'); if (b) b.innerHTML = pushHTML(await SO.pushInfo());
+    },
+    async 'so-push-off'() { await SO.disablePush(); toast('Mitteilungen sind aus.'); const b = $('#so-push'); if (b) b.innerHTML = pushHTML(await SO.pushInfo()); },
+    async 'so-push-test'() { try { const r = await SO.testPush(); toast(r.devices ? 'Test gesendet – gleich kommt eine Mitteilung 🔔' : 'Auf diesem Server ist noch kein Gerät angemeldet.', r.devices ? '' : 'toast-warn'); } catch (e) { handleErr(e); } },
+    'so-acc-new'() {
+      sheet(`<h2 class="sh-t">Konten für Freunde</h2><p class="sh-sub">Ein Name pro Zeile. Für Mädels „w“ dahinter (z. B. „Lisa w“).</p>
+        <textarea id="ac-names" class="ta" rows="6">Luca\nAjjai\nDavid\nJonas</textarea>
+        <label class="field"><span>Gruppe</span><input id="ac-group" maxlength="40" value="Gym-Gang"></label>
+        <button class="btn big wide tap" id="ac-go">${ico('plus')}Anlegen</button>`, (sh, close) => {
+        $('#ac-go', sh).addEventListener('click', async () => {
+          const people = $('#ac-names', sh).value.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(.*?)\s+([wm])$/i); return m ? { name: m[1], sex: m[2].toLowerCase() } : { name: l, sex: 'm' }; });
+          if (!people.length) { toast('Bitte mindestens einen Namen eintragen.', 'toast-warn'); return; }
+          try { const r = await SO.createAccounts(people, $('#ac-group', sh).value); ui3.accs = r.accounts; close(); haptic.ok(); toast(`${r.accounts.length} Konten bereit – tippe auf einen Namen, um den Link zu verschicken.`); refresh(); SO.refreshLists().catch(() => {}); } catch (e) { handleErr(e); }
+        });
+      });
+    },
+    'so-acc-open'(el) {
+      const a = ui3.accs[+el.dataset.i]; if (!a) return;
+      sheet(`<h2 class="sh-t">${esc(a.name)}</h2><p class="sh-sub">Das ist der persönliche Link nur für ${esc(a.name)}. Bitte nicht weitergeben.</p>
+        <div class="menu-list"><button class="tap" data-m="send">${ico('share')}Link verschicken</button><button class="tap" data-m="wa">${ico('chat')}Per WhatsApp</button><button class="tap" data-m="copy">${ico('copy')}Nachricht kopieren</button><button class="tap danger" data-m="relink">${ico('close')}Neuen Link erzeugen (alter wird ungültig)</button></div>`, (sh, close) => {
+        sh.addEventListener('click', async e => {
+          const b = e.target.closest('[data-m]'); if (!b) return; close();
+          if (b.dataset.m === 'send') shareText(accMsg(a), 'Dein Zugang');
+          if (b.dataset.m === 'wa') openExternal('https://wa.me/?text=' + encodeURIComponent(accMsg(a)));
+          if (b.dataset.m === 'copy') copy(accMsg(a));
+          if (b.dataset.m === 'relink') { try { ui3.accs = (await SO.relink(a.id)).accounts; toast('Neuer Link ist da – den alten kann niemand mehr benutzen.'); refresh(); } catch (er) { handleErr(er); } }
+        });
+      });
+    },
     'so-logout'() {
       sheet(`<h2 class="sh-t">Abmelden?</h2><p class="sh-sub">Du kannst dich mit einer neuen Einladung wieder verbinden – dabei bekommst du aber ein neues Konto. Deine Trainingsdaten in der App bleiben erhalten.</p><div class="rc-btns"><button class="btn ghost tap" data-close>Abbrechen</button><button class="btn danger tap" id="lo-y">Abmelden</button></div>`, (sh, close) => { $('#lo-y', sh).addEventListener('click', () => { SO.logout(); close(); go('#/freunde'); }); });
     },
@@ -564,3 +617,12 @@ export async function handleInvite(url) {
   return true;
 }
 export function onAutoToggle(on) { SO.soc().auto = on; save(); haptic.tap(); }
+
+/* Erster Start über einen persönlichen Zugangslink: kurz erklären, was noch zu tun ist */
+export function welcomeSheet(name) {
+  const ios = SO.isIOS && !SO.isStandalone();
+  sheet(`<div class="learn-sum"><span class="ls-emo">👋💪</span><h2 class="sh-t">Hey ${esc(name)}!</h2><p class="sh-sub">Du bist schon drin – deine Jungs sind in der Gruppe. Nur noch zwei Sachen:</p></div>
+    <ol class="howto"><li>${ios ? '<b>Auf den Home-Bildschirm legen:</b> unten auf Teilen ⎙ tippen → „Zum Home-Bildschirm“ → „Hinzufügen“. Danach die App von dort öffnen.' : '<b>Auf den Home-Bildschirm legen:</b> im Browser-Menü „Zum Startbildschirm“ wählen.'}</li><li><b>Strava verbinden</b> – ein Tipp, dann kommen deine Läufe von allein in die Rangliste.</li></ol>
+    <div class="rc-btns"><button class="btn tap" data-go="#/strava">Strava verbinden</button><button class="btn ghost tap" data-go="#/freunde">Zur Gruppe</button></div>`);
+}
+export function prepareInvite(code) { ui3.setup.inv = code; }

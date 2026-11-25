@@ -3,8 +3,9 @@ import { ING, DISHES, STORES, CATS, W_REST, W_TRAIN } from './data.js';
 import { S } from './store.js';
 import * as E from './engine.js';
 import * as SP from './sport.js';
-import { ico, esc, ring } from './ui.js';
+import { ico, esc, ring, refresh, current } from './ui.js';
 import { isNative } from './native.js';
+import * as SO from './social.js';
 import * as FA from './foodai.js';
 import * as N from './nutri.js';
 import * as Strava from './strava.js';
@@ -1139,15 +1140,15 @@ function pickScreen(F) {
   <div class="page detail">
     ${dhead('Essen eintragen', 'fotografieren oder suchen')}
     ${F.state === 'error' ? `<article class="card warn rise">${ico('info')}<div><b>${F.unknownCode ? 'Barcode ' + esc(F.unknownCode) + ' nicht gefunden' : 'Nichts erkannt'}</b><p>${esc(F.error || '')}</p>${F.unknownCode ? `<button class="btn sm tap" data-act="foodcam" data-mode="label" data-code="${esc(F.unknownCode)}">${ico('camera')}Nährwerttabelle fotografieren</button>` : `<button class="btn sm tap" data-act="foodcam">${ico('camera')}Nochmal fotografieren</button>`}</div></article>` : ''}
-    <div class="fmodes rise">
+    ${isNative ? `    <div class="fmodes rise">
       <button class="fm tap" data-act="foodcam"><span>📸</span><b>Essen</b><small>Teller, Obst, Snack</small></button>
       <button class="fm tap" data-act="foodcam" data-mode="barcode"><span>📦</span><b>Barcode</b><small>Packung scannen</small></button>
       <button class="fm tap" data-act="foodcam" data-mode="label"><span>🏷️</span><b>Tabelle</b><small>Nährwerte lesen</small></button>
-    </div>
+    </div>` : `<article class="card rise"><h3 class="c-h">${ico('camera', 'xs')} Foto, Barcode &amp; Tabelle</h3><p class="fine">Essen fotografieren, Barcodes scannen und Nährwerttabellen lesen gibt es in der Android-App. Hier kannst du Essen <b>suchen</b> – 54.000 Produkte und 200 Grundnahrungsmittel sind dabei.</p></article>`}
     <div class="fsearch rise"><span>${ico('edit')}</span><input id="food-q" type="search" placeholder="Haribo, Beef Tatar, Cola, Spaghetti …" value="${esc(q)}" autocomplete="off"></div>
     ${loading}
     ${res.length ? `<div class="flist rise">${res.map(itemRow).join('')}</div>` : q.trim().length >= 2 && !F.loading ? `<p class="empty">Nix gefunden. Fotografiere die Packung (Barcode oder Tabelle) – dann lernt die App das Produkt.</p>` : ''}
-    ${!isNative && !res.length ? `<article class="card rise"><h3 class="c-h">🧪 Im Browser testen</h3><p class="fine">Hier gibt’s keine Kamera-KI. Beispiele laufen durch dieselbe Auswertung wie ein echtes Foto:</p><div class="chips"><button class="chip tap" data-act="food-demo" data-kind="haribo">📦 Haribo-Packung</button><button class="chip tap" data-act="food-demo" data-kind="table">🏷️ Nährwerttabelle</button><button class="chip tap" data-act="food-demo" data-kind="schnitzel">🥩 Schnitzel</button><button class="chip tap" data-act="food-demo" data-kind="banana">🍌 Banane</button></div></article>` : ''}
+    ${!isNative && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && !res.length ? `<article class="card rise"><h3 class="c-h">🧪 Im Browser testen</h3><p class="fine">Hier gibt’s keine Kamera-KI. Beispiele laufen durch dieselbe Auswertung wie ein echtes Foto:</p><div class="chips"><button class="chip tap" data-act="food-demo" data-kind="haribo">📦 Haribo-Packung</button><button class="chip tap" data-act="food-demo" data-kind="table">🏷️ Nährwerttabelle</button><button class="chip tap" data-act="food-demo" data-kind="schnitzel">🥩 Schnitzel</button><button class="chip tap" data-act="food-demo" data-kind="banana">🍌 Banane</button></div></article>` : ''}
     ${!res.length && q.trim().length < 2 ? `${favs.length ? `<h2 class="sec sm rise">⭐ Favoriten</h2><div class="flist rise">${favs.slice(0, 6).map(itemRow).join('')}</div>` : ''}${hist.length ? `<h2 class="sec sm rise">Zuletzt gegessen</h2><div class="flist rise">${hist.map(itemRow).join('')}</div>` : ''}${cust.length ? `<h2 class="sec sm rise">Meine Produkte</h2><div class="flist rise">${cust.map(c => itemRow(FA.customItem(c))).join('')}</div>` : ''}
     <h2 class="sec sm rise">Schnell auswählen</h2><div class="fquick rise">${['Banane', 'Apfel', 'Semmel / Kaisersemmel', 'Cola', 'Gummibärchen / Fruchtgummi', 'Vollmilchschokolade', 'Kartoffelchips (gesalzen)', 'Magertopfen', 'Ei, gekocht', 'Kaffee schwarz', 'Bier (Lager/Hell)', 'Nuss-Nougat-Creme (Nutella)'].map(n => { const gi = FA.genIndex(n); if (gi < 0) return ''; const i = FA.genItem(gi); return `<button class="fq tap" data-act="food-choose" data-key="${i.key}"><span>${i.e}</span><b>${esc(i.name.split(' (')[0].split(' / ')[0])}</b></button>`; }).join('')}</div>` : ''}
     <p class="fine src-note">Daten: Open Food Facts (ODbL) · USDA FoodData Central · eigene Richtwerte</p>
@@ -1225,11 +1226,12 @@ function labelForm(F) {
 /* ---------- Strava ---------- */
 export function strava() {
   const s = S.strava, on = Strava.connected(), runs = Strava.visible().slice(0, 12);
+  const srv = Strava.server, online = SO.online(), owner = online && SO.soc().owner, useServer = online && (!isNative || (srv.enabled && !Strava.hasKeys())), athlete = s.athlete || srv.athlete;
   const when = ms => { const d = new Date(ms); return relDay(E.keyOf(d)) + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
   const runLi = r => `<li><span class="sr-d"><small>${DS[E.wd(r.date)]}</small><b>${E.dateOf(r.date).getDate()}</b></span><span class="sr-t"><b>${lit(r.km)} km · ${r.min} Min</b><small>${r.sec && r.km ? 'Ø ' + paceStr(r.sec / 60 / r.km) + ' /km' : ''}${r.hr ? ' · ♥ ' + r.hr : ''}${r.elev ? ' · ↗ ' + r.elev + ' m' : ''} · ${r.kcal} kcal</small><small>${r.src === 'strava' ? '🧡' : '📄'} ${esc(r.name || 'Lauf')}</small></span></li>`;
   const connectedCard = `
     <article class="card st-card rise">
-      <div class="st-top"><span class="st-ok">${ico('check')}</span><div><b>Mit Strava verbunden${s.athlete ? ' · ' + esc(s.athlete) : ''}</b><small>Zuletzt abgeglichen: ${s.last ? when(s.last) : 'noch nie'}</small></div></div>
+      <div class="st-top"><span class="st-ok">${ico('check')}</span><div><b>Mit Strava verbunden${athlete ? ' · ' + esc(athlete) : ''}</b><small>Zuletzt abgeglichen: ${s.last ? when(s.last) : 'noch nie'}</small></div></div>
       <button class="btn wide tap" data-act="strava-sync">${ico('shuffle')}Jetzt Läufe holen</button>
       <label class="switch-row tap"><span>Beim Öffnen der App automatisch holen</span><input type="checkbox" data-st-auto${s.auto !== false ? ' checked' : ''}><i class="sw"></i></label>
       <button class="link tap st-off" data-act="strava-off">Verbindung trennen</button>
@@ -1257,11 +1259,26 @@ export function strava() {
         <button class="btn ghost wide tap" data-act="strava-redeem">${ico('check')}Code einlösen</button>
       </details>
     </article>`;
-  return { html: `
+  const host = online ? new URL(SO.soc().url).host : '';
+  const serverCard = !online ? `<article class="card rise"><h3 class="c-h">${ico('run', 'xs')} Erst anmelden</h3><p class="rc-desc">Melde dich zuerst unter <b>Freunde</b> an – dann kannst du Strava mit einem Tipp verbinden.</p><button class="btn wide tap" data-go="#/freunde">Zu „Freunde“</button></article>`
+    : srv.enabled ? `<article class="card rise"><h3 class="c-h">${ico('run', 'xs')} Mit Strava verbinden</h3>
+      <ol class="steps sm"><li><span class="st-n">1</span><span>Auf den Knopf tippen.</span></li><li><span class="st-n">2</span><span>Bei Strava auf <b>„Autorisieren“</b> tippen.</span></li><li><span class="st-n">3</span><span>Danach auf <b>„Zurück zur App“</b> – fertig. Deine Läufe kommen dann von allein.</span></li></ol>
+      <button class="btn big wide tap" data-act="strava-connect-srv">${ico('run')}Mit Strava verbinden</button></article>`
+    : `<article class="card rise"><h3 class="c-h">${ico('info', 'xs')} Strava ist noch nicht freigeschaltet</h3><p class="rc-desc">${owner ? 'Trag unten die Strava-Schlüssel ein.' : 'Der Besitzer des Servers muss Strava erst einrichten. Sag ihm Bescheid.'}</p></article>`;
+  const ownerCard = owner ? `<details class="st-manual rise"${srv.enabled ? '' : ' open'}><summary class="tap">Strava für alle einrichten (nur Besitzer)</summary>
+      <ol class="steps sm"><li><span class="st-n">1</span><span>Auf strava.com/settings/api eine <b>Anwendung anlegen</b>.<br><button class="btn sm ghost tap" data-act="strava-open-api">${ico('chev')}strava.com/settings/api</button></span></li>
+      <li><span class="st-n">2</span><span>Bei <b>Autorisierungs-Callback-Domain</b> genau das eintragen: <button class="chip tap" data-act="strava-copy" data-v="${esc(host)}">${esc(host)} ${ico('copy', 'xs')}</button></span></li>
+      <li><span class="st-n">3</span><span>Client-ID und Client-Secret hier eintragen:</span></li></ol>
+      <label class="field"><span>Client-ID</span><input id="sv-cid" inputmode="numeric" autocomplete="off" placeholder="z. B. 123456"></label>
+      <label class="field"><span>Client-Secret</span><input id="sv-sec" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="40 Zeichen"></label>
+      <button class="btn wide tap" data-act="strava-save-srv">${ico('check')}Speichern</button>
+      <p class="fine">⚠️ Eine neue Strava-App darf zuerst nur <b>1 Person</b> verbinden (dich). Damit auch deine Freunde sich verbinden können, musst du bei Strava einmal eine Erhöhung beantragen (Prüfung dauert ca. 1 Woche).<br><button class="link tap" data-act="strava-limit-info">So beantragst du das</button></p></details>` : '';
+  return { mount: () => { Strava.refreshServer().then(ch => { if (ch && current() === '#/strava') refresh(); }); }, html: `
   <div class="page detail">
     ${dhead('Strava', 'Läufe nach dem Laufen einlesen')}
     <section class="info-hero rise" style="--h:20"><span class="ih-emo float">🧡</span><h1>Strava</h1><p>${on ? 'Deine Läufe kommen automatisch in die App.' : 'Lauf aufzeichnen, App öffnen, fertig – Strecke, Zeit, Puls und Kalorien kommen von Strava.'}</p></section>
-    ${on ? connectedCard : setupCard}
+    ${on ? connectedCard : (useServer ? serverCard : setupCard)}
+    ${useServer ? ownerCard : ''}
     <article class="card rise">
       <h3 class="c-h">${ico('copy', 'xs')} Datei einlesen</h3>
       <p class="lede">Geht auch <b>ohne Strava-Zugang</b>: Eine <b>GPX- oder TCX-Datei</b> eines Laufs auswählen – von Strava (im Browser: Aktivität → ⋯ → GPX exportieren), von deiner Uhr oder einer anderen Lauf-App.</p>

@@ -1,8 +1,9 @@
 /* Community: Verbindung zum eigenen Server (z. B. Raspberry Pi). REST + Live-Events (SSE).
    Zustand in S.social: { url, token, user, read:{chat:seq}, auto, stickers:[{id,data,url}] } */
 import { S, save } from './store.js';
+import { isNative } from './native.js';
 
-export const soc = () => (S.social = S.social || { url: '', token: '', user: null, read: {}, auto: true, stickers: [] });
+export const soc = () => (S.social = S.social || { url: '', token: '', user: null, read: {}, auto: true, stickers: [], owner: false, invite: '' });
 export const online = () => !!(soc().url && soc().token);
 export const live = { chats: {}, users: {}, groups: [], dms: [], typing: {}, es: null, status: 'off', listeners: new Set(), unread: 0 };
 const fire = (ev, data) => { for (const fn of live.listeners) { try { fn(ev, data); } catch (e) { console.error(e); } } };
@@ -43,7 +44,7 @@ export async function register(url, invite, name, color) {
   const h = await api('/api/health', { url, token: '' }).catch(e => { throw e; });
   if (!h || h.app !== 'ybwye') throw err('url', 'Unter dieser Adresse läuft kein YBWYE-Server.');
   const r = await api('/api/register', { url, token: '', method: 'POST', body: { invite, name, color } });
-  Object.assign(soc(), { url, token: r.token, user: r.user, server: r.server && r.server.name }); save(true);
+  Object.assign(soc(), { url, token: r.token, user: r.user, server: r.server && r.server.name, owner: !!r.owner }); save(true);
   connect(); return r;
 }
 export function logout() { disconnect(); Object.assign(soc(), { token: '', user: null }); save(true); live.chats = {}; live.groups = []; live.dms = []; fire('groups'); }
@@ -55,12 +56,13 @@ export function connect() {
   disconnect(); live.status = 'connecting';
   const es = new EventSource(`${soc().url}/api/stream?token=${encodeURIComponent(soc().token)}`); live.es = es;
   es.addEventListener('hello', () => { live.status = 'on'; retry = 0; fire('status'); refreshLists().catch(() => {}); });
-  es.addEventListener('msg', e => { const m = JSON.parse(e.data); addMsg(m.chat, m); fire('msg', m); if (m.from !== (soc().user || {}).id) notify(m); if (!live.users[m.from]) fetchUser(m.from); });
+  es.addEventListener('msg', e => { const m = JSON.parse(e.data); delete live.typing[m.chat]; addMsg(m.chat, m); fire('msg', m); if (m.from !== (soc().user || {}).id) notify(m); if (!live.users[m.from]) fetchUser(m.from); });
   es.addEventListener('typing', e => { const d = JSON.parse(e.data); live.typing[d.chat] = { name: d.user.name, until: Date.now() + 4000 }; fire('typing', d); });
   es.addEventListener('react', e => { const d = JSON.parse(e.data); if (d.on === 'msg') { const list = live.chats[d.chat]; const m = list && list.find(x => x.id === d.id); if (m) m.re = d.re; } fire('react', d); });
   es.addEventListener('act', e => fire('act', JSON.parse(e.data)));
   es.addEventListener('group', () => refreshLists().catch(() => {}));
   es.addEventListener('follow', e => fire('follow', JSON.parse(e.data)));
+  es.addEventListener('strava', e => fire('strava', JSON.parse(e.data)));
   es.addEventListener('user', e => { const u = JSON.parse(e.data); live.users[u.id] = u; fire('user', u); });
   es.onerror = () => { live.status = 'off'; fire('status'); es.close(); live.es = null; clearTimeout(retryT); retryT = setTimeout(connect, Math.min(30000, 2000 * 2 ** retry++)); };
 }
@@ -117,7 +119,7 @@ export const follow = (id, on = true) => api(`/api/follow/${id}`, { method: on ?
 export const profile = id => api(`/api/users/${id}`);
 export const feed = () => api('/api/feed');
 export const leaderboard = (group, period = 'week') => api(`/api/leaderboard?${group ? 'group=' + group + '&' : ''}period=${period}`);
-export const me = () => api('/api/me').then(r => { soc().user = r.user; save(); return r; });
+export const me = () => api('/api/me').then(r => { soc().user = r.user; soc().owner = !!(r.server && r.server.owner); soc().invite = (r.server && r.server.invite) || ''; save(); return r; });
 export const updateMe = f => api('/api/me', { method: 'PATCH', body: f }).then(r => { soc().user = r.user; save(); return r.user; });
 
 /* ---------- Fortschritt teilen ---------- */
@@ -134,3 +136,52 @@ function notify(m) {
   const body = m.kind === 'image' ? '📷 Foto' : m.kind === 'sticker' ? '🎨 Sticker' : m.kind === 'activity' ? '🏅 ' + m.text : m.text;
   notifier({ title: g ? `${g.emoji} ${g.name}` : (u.name || 'Neue Nachricht'), body: g ? `${u.name || ''}: ${body}` : body, chat: m.chat });
 }
+
+/* ---------- Cloud-Version: Adresse der Seite = Server, Zugangslink, Mitteilungen ---------- */
+export const cloud = { checked: false, ok: false, setup: false, name: '' };
+export async function detectCloud() {
+  if (cloud.checked || isNative) return cloud; cloud.checked = true;
+  try {
+    const r = await fetch('/api/health', { cache: 'no-store' }); const j = await r.json();
+    if (j && j.app === 'ybwye' && j.cloud) { cloud.ok = true; cloud.setup = !!j.setup; cloud.name = j.name || ''; if (!soc().url) { soc().url = location.origin; save(); } }
+  } catch (e) { /* kein Cloud-Server unter dieser Adresse */ }
+  return cloud;
+}
+/* Persönlicher Zugangslink (?k=…): sofort angemeldet, ohne etwas einzutippen */
+export async function loginWithToken(token) {
+  const url = soc().url || location.origin;
+  const r = await api('/api/me', { url, token });
+  disconnect(); Object.assign(soc(), { url, token, user: r.user, server: r.server && r.server.name, owner: !!(r.server && r.server.owner), invite: (r.server && r.server.invite) || '', read: {} }); save(true);
+  live.chats = {}; live.groups = []; live.dms = []; connect(); return r;
+}
+export const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+export const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const b64 = s => { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const bin = atob(s); return Uint8Array.from(bin, c => c.charCodeAt(0)); };
+/* Zustand der Mitteilungen: native | unsupported | install (iPhone: erst auf den Home-Bildschirm) | denied | off | on */
+export async function pushInfo() {
+  if (isNative) return { state: 'native' };
+  if (isIOS && !isStandalone()) return { state: 'install' };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return { state: 'unsupported' };
+  if (Notification.permission === 'denied') return { state: 'denied' };
+  try { const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription(); return { state: sub && Notification.permission === 'granted' ? 'on' : 'off' }; } catch (e) { return { state: 'off' }; }
+}
+export async function enablePush() {       // muss direkt aus einem Fingertipp aufgerufen werden (iPhone-Regel)
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw err('denied', 'Mitteilungen wurden nicht erlaubt. Du kannst das in den Einstellungen des Handys ändern.');
+  const reg = await navigator.serviceWorker.ready, { key } = await api('/api/push/key');
+  let sub = await reg.pushManager.getSubscription(); if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+  await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } }); return true;
+}
+export async function disablePush() {
+  const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription();
+  if (sub) { await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
+}
+export const testPush = () => api('/api/push/test', { method: 'POST' });
+/* Bei jedem Start: Abo beim Server auffrischen (Handy-Dienste ändern die Adresse manchmal) */
+export async function refreshPush() {
+  try { const i = await pushInfo(); if (i.state !== 'on') return; const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } }); } catch (e) { /* egal */ }
+}
+/* Vorbereitete Konten (Besitzer) */
+export const accounts = () => api('/api/admin/accounts');
+export const createAccounts = (people, group) => api('/api/admin/accounts', { method: 'POST', body: { people, group } });
+export const relink = id => api(`/api/admin/accounts/${id}/relink`, { method: 'POST' });
