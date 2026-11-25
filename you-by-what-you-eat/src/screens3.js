@@ -397,6 +397,7 @@ function meSettingsHTML() {
   const ownerCard = so.owner ? `<article class="card rise"><div class="c-h">${ico('people')}Konten für Freunde <small class="soft">· nur Besitzer</small></div>
     <p class="rc-desc">Lege die Konten im Voraus an. Jeder bekommt einen <b>persönlichen Link</b>: öffnen, auf den Home-Bildschirm legen, fertig – nichts einzutippen, alle sind schon in der Gruppe und folgen sich.</p>
     <div id="so-accs">${(ui3.accs || []).map(accRow).join('')}</div>
+    ${(ui3.accs || []).length > 1 ? `<button class="btn ghost wide tap" data-act="so-acc-all" style="margin-bottom:8px">${ico('copy')}Alle Links als Liste kopieren</button>` : ''}
     <button class="btn wide tap" data-act="so-acc-new">${ico('plus')}Konten anlegen</button>
     ${so.invite ? `<p class="fine">Einladungsschlüssel für andere Leute: <button class="chip tap" data-act="so-copy" data-v="${esc(so.invite)}">${esc(so.invite)} ${ico('copy', 'xs')}</button></p>` : ''}</article>` : '';
   return ownerCard + `<article class="card rise"><div class="c-h">${ico('bell')}Teilen & Verbindung</div><div id="so-push"></div>
@@ -571,6 +572,7 @@ export function actions() {
     },
     async 'so-push-off'() { await SO.disablePush(); toast('Mitteilungen sind aus.'); const b = $('#so-push'); if (b) b.innerHTML = pushHTML(await SO.pushInfo()); },
     async 'so-push-test'() { try { const r = await SO.testPush(); toast(r.devices ? 'Test gesendet – gleich kommt eine Mitteilung 🔔' : 'Auf diesem Server ist noch kein Gerät angemeldet.', r.devices ? '' : 'toast-warn'); } catch (e) { handleErr(e); } },
+    'so-acc-all'() { copy((ui3.accs || []).map(a => `${a.name}: ${a.link}`).join('\n\n')); },
     'so-acc-new'() {
       sheet(`<h2 class="sh-t">Konten für Freunde</h2><p class="sh-sub">Ein Name pro Zeile. Für Mädels „w“ dahinter (z. B. „Lisa w“).</p>
         <textarea id="ac-names" class="ta" rows="6">Luca\nAjjai\nDavid\nJonas</textarea>
@@ -586,6 +588,7 @@ export function actions() {
     'so-acc-open'(el) {
       const a = ui3.accs[+el.dataset.i]; if (!a) return;
       sheet(`<h2 class="sh-t">${esc(a.name)}</h2><p class="sh-sub">Das ist der persönliche Link nur für ${esc(a.name)}. Bitte nicht weitergeben.</p>
+        <div class="gi-qr acc-qr">${qrSVG(a.link)}</div><p class="fine" style="text-align:center;margin:6px 0 12px">Sitzt ${esc(a.name)} neben dir? Mit der <b>Kamera</b> scannen lassen – öffnet direkt seinen Zugang.</p>
         <div class="menu-list"><button class="tap" data-m="send">${ico('share')}Link verschicken</button><button class="tap" data-m="wa">${ico('chat')}Per WhatsApp</button><button class="tap" data-m="copy">${ico('copy')}Nachricht kopieren</button><button class="tap danger" data-m="relink">${ico('close')}Neuen Link erzeugen (alter wird ungültig)</button></div>`, (sh, close) => {
         sh.addEventListener('click', async e => {
           const b = e.target.closest('[data-m]'); if (!b) return; close();

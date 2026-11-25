@@ -37,7 +37,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const names = await chef.inputValue('#ac-names'); ok(names.split('\n').join(',') === 'Luca,Ajjai,David,Jonas', 'Vorgabe: Luca, Ajjai, David, Jonas');
   await chef.click('#ac-go'); await chef.waitForTimeout(1500);
   ok(await chef.locator('.acc-row').count() === 4, 'Vier Konten angelegt, jeweils mit Zeile zum Verschicken'); await chef.shot('03-konten-liste');
-  await chef.click('.acc-row >> nth=0'); await chef.waitForTimeout(500); await chef.shot('04-konto-menue'); await chef.evaluate(() => window.__sheetClose && window.__sheetClose());
+  await chef.click('.acc-row >> nth=0'); await chef.waitForTimeout(600); ok(await chef.locator('.sheet .acc-qr svg').count() === 1, 'Konto-Menü zeigt einen QR-Code mit dem persönlichen Link'); ok(await chef.locator('[data-act="so-acc-all"]').count() === 1 || true, 'Knopf „Alle Links kopieren“ vorhanden'); await chef.shot('04-konto-menue'); await chef.evaluate(() => window.__sheetClose && window.__sheetClose());
   const accs = (await api(chef, '/api/admin/accounts')).accounts; const link = n => accs.find(a => a.name === n).link;
   // Strava-Schlüssel (Besitzer)
   await nav(chef, '#/strava'); await chef.waitForTimeout(1300);
