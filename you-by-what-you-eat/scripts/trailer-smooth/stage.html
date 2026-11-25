@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<style>
+html,body{margin:0;width:360px;height:780px;overflow:hidden;background:#000;font-family:"Inter Display","Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#root{position:absolute;inset:0;overflow:hidden}
+#bg{position:absolute;inset:0}
+#pov{position:absolute;top:32px;left:0;right:0;display:flex;justify-content:center}
+#pov span{display:inline-block;background:#fff;color:#0F172A;font:800 12.5px/1 "Inter","Inter Display",system-ui;padding:8px 13px;border-radius:11px;box-shadow:0 8px 22px rgba(0,0,0,.22);white-space:nowrap}
+#kin{position:absolute;left:0;right:0;top:70px;text-align:center;font-family:"Inter Display","Inter",sans-serif;font-weight:900;line-height:.98;letter-spacing:-.025em;text-transform:uppercase;padding:0 12px;text-shadow:0 6px 24px rgba(0,0,0,.26)}
+#kin .w{display:inline-block;margin:0 .1em;will-change:transform,opacity}
+#phone{position:absolute;left:180px;top:477px;width:0;height:0;will-change:transform}
+#shell{position:absolute;left:-139px;top:-291px;width:278px;height:583px;border-radius:44px;background:#0b0b0f;box-shadow:0 34px 70px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.06) inset}
+#scr{position:absolute;left:8px;top:8px;width:262px;height:567px;border-radius:36px;overflow:hidden;background:#fff}
+.lay{position:absolute;inset:0;will-change:transform}
+.lay img{position:absolute;inset:0;width:100%;height:100%;display:block}
+#notch{display:none;position:absolute;left:50%;top:15px;width:62px;height:17px;margin-left:-31px;border-radius:10px;background:#0b0b0f}
+#end{position:absolute;inset:0;display:none}
+#end .star{position:absolute;border-radius:50%;background:#9CF5D6}
+#logo{position:absolute;left:50%;top:168px;width:104px;height:104px;margin-left:-52px;border-radius:26px;box-shadow:0 18px 60px rgba(16,179,134,.5)}
+#ttl{position:absolute;left:0;right:0;top:300px;text-align:center;font:900 27px/1.18 "Inter Display","Inter",sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff}
+#ttl .l{display:inline-block}
+#ttl .a{color:#34D399}
+#bul{position:absolute;left:34px;right:20px;top:394px;font:700 15px/1.2 "Inter",system-ui;color:#F1F5F9}
+#bul div{margin:0 0 13px;white-space:nowrap}
+#cta{position:absolute;left:50%;top:600px;transform-origin:50% 50%;padding:14px 0;margin-left:-125px;width:250px;text-align:center;white-space:nowrap;border-radius:999px;background:linear-gradient(135deg,#12B886,#0B8F68);color:#fff;font:800 12.5px/1 "Inter",system-ui;letter-spacing:.1em;text-transform:uppercase}
+#note{position:absolute;left:0;right:0;bottom:30px;text-align:center;font:500 10.5px/1.4 "Inter",system-ui;color:#64748B}
+#fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+</style></head><body>
+<div id="root">
+  <div id="bg"></div>
+  <div id="pov"><span></span></div>
+  <div id="kin"></div>
+  <div id="phone"><div id="shell"><div id="scr"><div class="lay" id="lay0"></div><div class="lay" id="lay1"></div></div><div id="notch"></div></div></div>
+  <div id="end">
+    <img id="logo" alt="">
+    <div id="ttl"></div>
+    <div id="bul"></div>
+    <div id="cta">Jetzt kostenlos starten</div>
+    <div id="note">Demo mit erfundenen Namen und Testdaten.</div>
+  </div>
+  <div id="fade"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const mixn = (a, b, k) => a + (b - a) * k;
+const E = { outCubic: x => 1 - Math.pow(1 - clamp01(x), 3), inCubic: x => Math.pow(clamp01(x), 3), inOut: x => { x = clamp01(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; } };
+const sp = (x, d, f) => x <= 0 ? 0 : 1 - Math.exp(-d * x) * Math.cos(f * x);   // Feder 0 → 1 mit leichtem Überschwingen
+const hex = h => { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; };
+const mixc = (a, b, k) => a.map((v, i) => Math.round(mixn(v, b[i], k)));
+const rgb = (c, a) => a == null ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const lighten = (c, k) => c.map(v => Math.round(mixn(v, 255, k)));
+const BARE = [hex('#0A0E13'), hex('#131C2A')];
+let S = null;
+
+window.setup = cfg => {
+  S = cfg; S.curSeg = -1; S.curPov = -1;
+  S.layers = [mkLayer($('#lay0')), mkLayer($('#lay1'))];
+  $('#logo').src = 'data:image/png;base64,' + cfg.icon;
+  $('#ttl').innerHTML = ['YOU BY', 'WHAT YOU EAT'].map((line, li) => '<div>' + [...line].map((c, i) => c === ' ' ? '<span class="l" style="width:.45em"></span>' : `<span class="l${li ? ' a' : ''}" data-i="${(li ? 6 : 0) + i}">${c}</span>`).join('') + '</div>').join('');
+  $('#bul').innerHTML = cfg.bullets.map(b => `<div>${b}</div>`).join('');
+  S.ttlL = [...document.querySelectorAll('#ttl .l')]; S.bulD = [...document.querySelectorAll('#bul div')];
+  const st = $('#end'); S.stars = [];
+  for (let i = 0; i < 46; i++) { const d = document.createElement('i'); d.className = 'star'; const r = 1 + (i * 37 % 3) * .6; d.style.cssText = `width:${r}px;height:${r}px`; st.prepend(d); S.stars.push({ el: d, x: (i * 73 % 100) * 3.6, y0: (i * 131 % 100) * 7.8, sp: 8 + (i * 17 % 10) * 2.2, ph: i * 1.3 }); }
+};
+function mkLayer(el) { const a = new Image(), b = new Image(); a.decoding = b.decoding = 'async'; el.append(a, b); return { el, a, b, sa: '', sb: '' }; }
+function frameIdx(t) { const ts = S.ts; let lo = 0, hi = ts.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ts[m] <= t) lo = m; else hi = m - 1; } return lo; }
+async function fill(layer, tau, jobs) {
+  const k = frameIdx(tau), ts = S.ts, ua = S.urls[k];
+  if (layer.sa !== ua) { layer.sa = ua; layer.a.src = ua; jobs.push(layer.a.decode().catch(() => {})); }
+  let w = 0;
+  if (k + 1 < ts.length && ts[k + 1] - ts[k] <= 0.024) w = (tau - ts[k]) / (ts[k + 1] - ts[k]);   // zwischen schnellen Bildern weich überblenden
+  if (w > 0.02) { const ub = S.urls[k + 1]; if (layer.sb !== ub) { layer.sb = ub; layer.b.src = ub; jobs.push(layer.b.decode().catch(() => {})); } layer.b.style.opacity = Math.min(1, w); layer.b.style.display = ''; }
+  else layer.b.style.display = 'none';
+}
+function clipAt(t) { const C = S.clips; let i = 0; for (let k = 0; k < C.length; k++) if (t >= C[k].t0 - 1e-6) i = k; return i; }
+
+window.render = async t => {
+  const C = S.clips, ci = clipAt(t), cur = C[ci], lt = t - cur.t0, inOutro = t >= S.outro.t0 - 1e-6, te = t - S.outro.t0;
+  // ---- Hintergrund: weiche Farbfahrt + schwebende Lichtflecken
+  const prevC = ci > 0 ? [hex(C[ci - 1].c[0]), hex(C[ci - 1].c[1])] : [hex(cur.c[0]), hex(cur.c[1])];
+  let c1 = prevC[0], c2 = prevC[1];
+  const target = inOutro ? BARE : [hex(cur.c[0]), hex(cur.c[1])];
+  const base = inOutro ? [hex(cur.c[0]), hex(cur.c[1])] : prevC;
+  const kc = E.inOut(((inOutro ? te : lt) + .05) / .55);
+  c1 = mixc(base[0], target[0], kc); c2 = mixc(base[1], target[1], kc);
+  const glow = rgb(lighten(c2, .45), inOutro ? .10 : .55);
+  S.bgEl = S.bgEl || $('#bg');
+  S.bgEl.style.background = `radial-gradient(75% 42% at ${50 + 22 * Math.sin(t * .55)}% ${14 + 5 * Math.cos(t * .47)}%, rgba(255,255,255,${inOutro ? .05 : .20}), transparent 70%), radial-gradient(62% 38% at ${28 + 26 * Math.cos(t * .42)}% ${86 + 5 * Math.sin(t * .66)}%, ${glow}, transparent 72%), linear-gradient(175deg, ${rgb(c1)}, ${rgb(c2)})`;
+
+  // ---- POV-Schild
+  const povEl = $('#pov span');
+  if (S.curPov !== ci) { S.curPov = ci; povEl.textContent = cur.pov; }
+  const pl = lt; povEl.parentElement.style.transform = `translateY(${-24 * (1 - Math.min(1.15, sp(pl, 10, 14)))}px)`; povEl.parentElement.style.opacity = inOutro ? clamp01(1 - te / .25) : clamp01(pl / .09);
+
+  // ---- Schlagzeile (Federn rein, weich raus)
+  const segs = S.segs; let si = 0; for (let k = 0; k < segs.length; k++) if (t >= segs[k].t0 - 1e-6) si = k;
+  const seg = segs[si], kinEl = $('#kin');
+  if (S.curSeg !== si) {
+    S.curSeg = si; const n = seg.text.length, fs = n <= 11 ? 50 : n <= 16 ? 43 : 37;
+    kinEl.style.fontSize = fs + 'px'; kinEl.style.color = seg.kc || '#fff';
+    kinEl.innerHTML = seg.text.split(' ').map(w => `<span class="w">${w}</span>`).join(' ');
+    S.words = [...kinEl.querySelectorAll('.w')];
+  }
+  const slt = t - seg.t0, exitP = clamp01((t - (seg.t1 - .15)) / .15);
+  S.words.forEach((w, i) => {
+    const l = slt - i * .065, p = Math.min(1.12, sp(l, 10, 15.5)), o = clamp01(l / .09);
+    const y = 38 * (1 - p) - 30 * E.inCubic(exitP), sc = .55 + .45 * p;
+    w.style.transform = `translateY(${y}px) scale(${sc})`; w.style.opacity = inOutro ? 0 : o * (1 - E.inCubic(exitP));
+  });
+  kinEl.style.display = inOutro && te > .3 ? 'none' : '';
+
+  // ---- Handy
+  const ph = $('#phone'); let dx = 0, dy = Math.sin(t * 1.9) * 3.2, rot = Math.sin(t * 1.15) * .9;
+  if (ci === 0) { const x = t / .95; dy += 600 * (1 - Math.min(1.06, sp(x, 9.5, 11.5))); rot += -10 * (1 - E.outCubic(x)); }
+  else { const kick = (ci % 2 ? 1 : -1) * 3.4 * Math.exp(-6.2 * lt) * Math.cos(12.5 * lt); rot += kick; dy += 9 * Math.exp(-7 * lt) * Math.sin(10 * lt); }
+  if (inOutro) { const p = E.inCubic(te / .6); dy += 960 * p; rot += 9 * p; }
+  ph.style.transform = `translate(${dx}px,${dy}px) rotate(${rot}deg)`;
+  ph.style.display = inOutro && te > .62 ? 'none' : '';
+
+  // ---- Bildschirm-Inhalt: neuer Clip gleitet von unten hinein
+  const jobs = [], L0 = S.layers[0], L1 = S.layers[1], TR = .30;
+  if (ci > 0 && lt < TR) {
+    const p = E.outCubic(lt / TR), prev = C[ci - 1];
+    await fill(L0, prev.m + (t - prev.t0), jobs); await fill(L1, cur.m + lt, jobs);
+    L0.el.style.display = ''; L0.el.style.transform = `translateY(${-5 * p}%)`; L0.el.style.filter = `brightness(${1 - .22 * p})`;
+    L1.el.style.transform = `translateY(${(1 - p) * 100}%)`;
+  } else {
+    await fill(L1, cur.m + lt, jobs); L0.el.style.display = 'none'; L1.el.style.transform = 'none';
+  }
+  L1.el.style.filter = 'none';
+  await Promise.all(jobs);
+
+  // ---- Abspann
+  const endEl = $('#end'); endEl.style.display = inOutro ? 'block' : 'none';
+  if (inOutro) {
+    S.stars.forEach(s => { const y = ((s.y0 - te * s.sp) % 780 + 780) % 780; s.el.style.transform = `translate(${s.x}px,${y}px)`; s.el.style.opacity = (.25 + .45 * (.5 + .5 * Math.sin(te * 2.2 + s.ph))) * clamp01(te / .8); });
+    const lg = $('#logo'), lp = te - .45, ls = .3 + .7 * Math.min(1.1, sp(lp, 9, 12));
+    lg.style.opacity = clamp01(lp / .14); lg.style.transform = `translateY(${Math.sin(te * 2) * 3}px) scale(${ls}) rotate(${-12 * (1 - E.outCubic(lp / .7))}deg)`;
+    S.ttlL.forEach(l => { const i = +l.dataset.i, x = te - .95 - i * .04, p = Math.min(1.1, sp(x, 10, 15)); l.style.opacity = clamp01(x / .1); l.style.transform = `translateY(${26 * (1 - p)}px)`; });
+    S.bulD.forEach((d, i) => { const x = (te - 1.8 - i * .17) / .45, p = E.outCubic(x); d.style.opacity = clamp01(x * 1.6); d.style.transform = `translateX(${-30 * (1 - p)}px)`; });
+    const cx = te - 3.1, cp = Math.min(1.08, sp(cx, 9, 13)), cta = $('#cta');
+    cta.style.opacity = clamp01(cx / .12); cta.style.transform = `scale(${.82 + .18 * cp})`; cta.style.boxShadow = `0 12px 38px rgba(18,184,134,${(.38 + .16 * Math.sin(te * 5)).toFixed(3)})`;
+    $('#note').style.opacity = clamp01((te - 3.7) / .6) * .9;
+  }
+  $('#fade').style.opacity = clamp01((te - (S.outro.t1 - S.outro.t0 - 1.3)) / 1.3) * (inOutro ? 1 : 0);
+  $('#fade').style.opacity = inOutro ? clamp01((te - (S.outro.t1 - S.outro.t0 - 1.3)) / 1.3) : 0;
+  if (t < .25) $('#fade').style.opacity = 1 - clamp01(t / .25);
+  return true;
+};
+</script></body></html>
