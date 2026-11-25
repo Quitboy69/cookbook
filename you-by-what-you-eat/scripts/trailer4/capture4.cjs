@@ -15,6 +15,9 @@ let T0 = Date.now();
 const log = m => console.log(((Date.now() - T0) / 1000).toFixed(1).padStart(6) + 's  ' + m);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const errs = [];
+const lisoOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}Z`;
+const dayAt = (back, h, m) => { const d = new Date(); d.setDate(d.getDate() - back); d.setHours(h, m, 4, 0); return d; };
+const CID = '184273', SEC = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 
 /* ---------- Server + erfundene Testnutzer (Max, Sara, Tom) ---------- */
 const DATA = path.join(OUT, 'srvdata'); fs.rmSync(DATA, { recursive: true, force: true }); fs.mkdirSync(DATA, { recursive: true });
@@ -136,6 +139,31 @@ async function seed(invite) {
     };
     boot();
   }, { icon });
+  // ---- nachgebaute Strava-Schnittstelle (Demo-Daten) ----
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
+  const acts = [
+    { id: 3001, name: 'Waldrunde', sport_type: 'TrailRun', distance: 8400, moving_time: 3300, start_date_local: lisoOf(dayAt(3, 8, 5)), average_heartrate: 155, total_elevation_gain: 180 },
+    { id: 3002, name: 'Intervalle', sport_type: 'Run', distance: 4100, moving_time: 1560, start_date_local: lisoOf(dayAt(5, 17, 40)), average_heartrate: 162, total_elevation_gain: 24 },
+    { id: 3003, name: 'Lockerer Lauf', sport_type: 'Run', distance: 6000, moving_time: 2500, start_date_local: lisoOf(dayAt(8, 18, 5)), average_heartrate: 143, total_elevation_gain: 51 },
+    { id: 3004, name: 'Radtour', sport_type: 'Ride', distance: 31000, moving_time: 4800, start_date_local: lisoOf(dayAt(2, 10, 0)) }
+  ];
+  const cal = { 3001: 640, 3002: 330, 3003: 455, 3005: 412 };
+  await ctx.route('https://www.strava.com/**', async route => {
+    const req = route.request(), url = new URL(req.url());
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const j = (status, body) => route.fulfill({ status, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (url.pathname.startsWith('/oauth/mobile/authorize')) return route.fulfill({ status: 200, headers: { 'content-type': 'text/html' }, body: '<body style="background:#000"></body>' });
+    if (url.pathname === '/oauth/token') {
+      const b = new URLSearchParams(req.postData());
+      if (b.get('grant_type') === 'authorization_code') return j(200, { token_type: 'Bearer', expires_at: Math.floor(Date.now() / 1000) + 21600, refresh_token: 'r1', access_token: 'a1', athlete: { firstname: 'Dein', lastname: 'Strava-Konto' } });
+      return j(200, { token_type: 'Bearer', expires_at: Math.floor(Date.now() / 1000) + 21600, refresh_token: 'r2', access_token: 'a2' });
+    }
+    if (url.pathname === '/api/v3/athlete/activities') return j(200, acts);
+    const m = /^\/api\/v3\/activities\/(\d+)$/.exec(url.pathname);
+    if (m) return j(200, { id: +m[1], calories: cal[m[1]] || 0 });
+    return j(404, { message: 'Not Found' });
+  });
+
     const page = await ctx.newPage();
     ctx.on('page', p => setTimeout(() => p.close().catch(() => {}), 900));
     const cdp = await ctx.newCDPSession(page);
@@ -179,6 +207,7 @@ async function seed(invite) {
       await wait(ms);
     }
     async function typeIn(sel, text, delay = 55) { await tap(sel, { after: 200 }); await page.keyboard.type(text, { delay }); await wait(300); }
+    const slow = async r => { try { await cdp.send('Animation.enable'); await cdp.send('Animation.setPlaybackRate', { playbackRate: r }); } catch (e) { /* egal */ } };
     const closeSheet = () => page.evaluate(() => window.__sheetClose && window.__sheetClose());
     const step = async (name, fn) => { log('▶ ' + name); try { await fn(); } catch (e) { errs.push('SCENE ' + name + ': ' + String(e.message).split('\n')[0]); log('!! ' + name + ' – ' + String(e.message).split('\n')[0]); try { await unspot(); await closeSheet(); } catch (x) { /* egal */ } } };
 
@@ -258,6 +287,62 @@ async function seed(invite) {
       await tap('[data-act="ttab"][data-v="fortschritt"]', { after: 900 });
       mark('fort.start'); cap('Dein *Fortschritt*', 2300, 'Wochen-Heatmap · Rekorde'); await wait(2300);
       await scrollTo(380, 1100); await wait(500);
+    });
+
+    await step('Strava', async () => {
+      mark('strava.word'); await word('STRAVA', '#FF6A1F', 2200, 'Deine Läufe. Automatisch.'); await wait(2300); await hideCard(); await wait(400);
+      await page.evaluate(() => { location.hash = '#/training'; }); await wait(900);
+      await tap('[data-act="ttab"][data-v="heute"]', { after: 900 });
+      await scrollTo(900, 1400);
+      mark('strava.row');
+      const row = page.locator('[data-go="#/strava"]').first();
+      cap('*Strava* – direkt in der App', 3200, 'Training → Strava'); await wait(1200);
+      await spot(row, { pad: 6, r: 16, c: '#FF6A1F' }); await wait(1400); await tap(row, { after: 1800 }); await unspot();
+      mark('strava.hero'); cap('Läufe *einlesen*', 3200, 'Strecke · Pace · Puls · Kalorien'); await wait(3400);
+      mark('strava.steps');
+      await scrollTo(300, 1500); await wait(700);
+      cap('Einmal *einrichten*', 3000, 'In 3 Minuten'); await wait(2800);
+      await scrollTo(560, 1500); await wait(1200);
+      mark('strava.keys');
+      await typeIn('#st-cid', CID, 110); await typeIn('#st-sec', SEC, 40);
+      mark('strava.connect');
+      cap('*Verbinden*', 2800, 'Strava öffnet sich'); await wait(600);
+      const cb = page.locator('[data-act="strava-connect"]').first();
+      await spot(cb, { pad: 8, r: 20, c: '#FF6A1F' }); await wait(1000); await tap(cb, { after: 900 }); await unspot();
+      mark('strava.auth'); await word('AUTORISIEREN', '#FF6A1F', 2400, 'Ein Tipp bei Strava'); await wait(2600); await hideCard(); await wait(300);
+      await page.evaluate(() => { document.querySelector('.st-manual').open = true; });
+      await page.locator('#st-paste').fill('ybwye://localhost?state=&code=goodcode&scope=read,activity:read_all'); await wait(600);
+      mark('strava.back'); await slow(0.55);
+      await tap('[data-act="strava-redeem"]', { after: 4200 });
+      await slow(1);
+      mark('strava.connected'); cap('*Verbunden* ✓', 3000, 'Die letzten 30 Tage sind da'); await wait(1200);
+      await scrollTo(330, 1800);
+      mark('strava.list'); await wait(3000);
+    });
+
+    await step('Strava Lauf', async () => {
+      acts.push({ id: 3005, name: 'Abendlauf', sport_type: 'Run', distance: 5200, moving_time: 1900, elapsed_time: 1990, start_date_local: lisoOf(dayAt(0, 17, 31)), average_heartrate: 148.6, max_heartrate: 171, total_elevation_gain: 42.3 });
+      await scrollTo(0, 1000);
+      mark('strava.newrun'); cap('Nach dem *Lauf*', 3000, 'App öffnen – fertig'); await wait(1400);
+      const sb = page.locator('[data-act="strava-sync"]').first();
+      await spot(sb, { pad: 8, r: 20, c: '#FF6A1F' }); await wait(1000); await tap(sb, { after: 600 }); await unspot();
+      await wait(4000);
+      await tap('.nav-btn[data-tab="training"]', { after: 1600 });
+      mark('strava.training'); cap('Dein Lauf *steht drin*', 3200, 'Strecke · Pace · Puls · Höhenmeter'); await wait(1400);
+      const src = page.locator('.src-line').first();
+      if (await src.count()) { await spot(src, { pad: 10, r: 14, c: '#FF6A1F' }); await wait(2800); await unspot(); } else await wait(2800);
+      await tap('.nav-btn[data-tab="heute"]', { after: 1700 });
+      mark('strava.heute'); cap('Kalorien *verbrannt* ✓', 3200, 'Zählen zum Tagesziel'); await wait(1400);
+      await scrollTo(300, 1500); await wait(2000); await scrollTo(0, 900);
+    });
+
+    await step('Strava Auto', async () => {
+      await page.evaluate(() => { location.hash = '#/strava'; }); await wait(1000);
+      await scrollTo(330, 1000);
+      mark('auto.start');
+      cap('Beim Öffnen *automatisch*', 3000, 'Nichts doppelt · jederzeit trennbar'); await wait(900);
+      const tg = page.locator('label.switch-row').first();
+      if (await tg.count()) { await spot(tg, { pad: 6, r: 16, c: '#FF6A1F' }); await wait(2400); await unspot(); } else await wait(2400);
     });
 
     await step('Bereit', async () => {
